@@ -37,7 +37,7 @@ Microservicio de autenticación con Node.js + Express + TypeScript que usa JWT y
 
 ### Tarea 2.1: Configurar cliente Supabase
 - [ ] Instalar `@supabase/supabase-js`
-- [ ] Crear archivo `src/config/supabase.ts` con configuración del cliente
+- [ ] Crear archivo `supabase.ts` con configuración del cliente
 - [ ] Exportar instancia de Supabase para reutilizar
 
 ### Tarea 2.2: Diseñar esquema de base de datos
@@ -105,13 +105,13 @@ Microservicio de autenticación con Node.js + Express + TypeScript que usa JWT y
 ## Fase 6: Controladores y Rutas
 
 ### Tarea 6.1: Crear controlador de autenticación
-- [ ] Crear `src/controllers/auth.controller.ts`
+- [ ] Crear `src/infrastructure/controllers/auth.controller.ts`
 - [ ] Implementar `checkEmail` - endpoint para verificar si correo existe
 - [ ] Implementar `createPassword` - endpoint para crear contraseña primera vez
 - [ ] Implementar `login` - endpoint para iniciar sesión
 
 ### Tarea 6.2: Crear rutas de autenticación
-- [ ] Crear `src/routes/auth.routes.ts`
+- [ ] Crear `src/infrastructure/routes/auth.routes.ts`
 - [ ] Definir rutas:
   - `POST /auth/check-email` - verificar correo
   - `POST /auth/create-password` - crear contraseña
@@ -123,7 +123,7 @@ Microservicio de autenticación con Node.js + Express + TypeScript que usa JWT y
 ## Fase 7: Middlewares de Protección
 
 ### Tarea 7.1: Crear middleware de autenticación
-- [ ] Crear `src/middlewares/auth.middleware.ts`
+- [ ] Crear `src/infrastructure/middlewares/auth.middleware.ts`
 - [ ] Implementar `authenticateToken` - verifica JWT en headers
 - [ ] Extraer token del header `Authorization: Bearer <token>`
 - [ ] Verificar token con `verifyToken()`
@@ -147,13 +147,13 @@ Microservicio de autenticación con Node.js + Express + TypeScript que usa JWT y
 - [ ] Aplicar validaciones en rutas
 
 ### Tarea 8.2: Crear middleware de manejo de errores
-- [ ] Crear `src/middlewares/error.middleware.ts`
+- [ ] Crear `src/infrastructure/middlewares/error.middleware.ts`
 - [ ] Implementar manejo centralizado de errores
 - [ ] Definir respuestas estándar de error
 - [ ] Aplicar middleware en `src/index.ts`
 
 ### Tarea 8.3: Crear tipos de error personalizados
-- [ ] Crear `src/utils/errors.ts`
+- [ ] Crear `src/exception/errors.ts`
 - [ ] Definir clases: `UnauthorizedError`, `NotFoundError`, `ValidationError`
 
 ---

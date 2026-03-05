@@ -12,7 +12,13 @@
     "type": "git",
     "url": "git+https://github.com/jdug-jadodev/loggin-mcp.git"
   },
-  "keywords": ["authentication", "jwt", "supabase", "express", "typescript"],
+  "keywords": [
+    "authentication",
+    "jwt",
+    "supabase",
+    "express",
+    "typescript"
+  ],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
@@ -21,15 +27,16 @@
   },
   "homepage": "https://github.com/jdug-jadodev/loggin-mcp#readme",
   "dependencies": {
-    "express": "^4.18.2",
+    "@supabase/supabase-js": "^2.98.0",
+    "cors": "^2.8.5",
     "dotenv": "^16.3.1",
-    "cors": "^2.8.5"
+    "express": "^4.18.2"
   },
   "devDependencies": {
-    "typescript": "^5.3.3",
-    "ts-node-dev": "^2.0.0",
-    "@types/node": "^20.10.6",
+    "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
-    "@types/cors": "^2.8.17"
+    "@types/node": "^20.10.6",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.3.3"
   }
 }
