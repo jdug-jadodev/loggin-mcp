@@ -1,1394 +1,1156 @@
 # One Spec (Root Spec)
-# FASE 3: Módulo de Contraseñas - Sistema de Hash Seguro
+**Fase 4: Módulo de JWT - Sistema de Autenticación con JSON Web Tokens**
 
 ---
-
+ 
 ## Objetivo
 
-Implementar un módulo seguro de gestión de contraseñas que permita el hashing y verificación de contraseñas utilizando bcrypt, siguiendo los principios de arquitectura hexagonal y garantizando la seguridad de las credenciales de usuarios en el microservicio de autenticación Loggin-MCP.
+Implementar un módulo de utilidad centralizado para la gestión de JSON Web Tokens (JWT) que permita:
 
-**Meta Específica:**
-Crear una capa de utilidades independiente (`src/utils/password.ts`) que encapsule toda la lógica de hashing y comparación de contraseñas, permitiendo su reutilización en diferentes capas de la arquitectura (Application y Infrastructure) sin acoplar la lógica de negocio a detalles de implementación específicos.
+1. **Generar tokens de autenticación** firmados digitalmente con información mínima del usuario (userId + email)
+2. **Verificar tokens** existentes validando su integridad, firma y vigencia temporal
+3. **Gestionar expiración automática** de tokens con una duración exacta de 15 horas
+4. **Proporcionar manejo robusto de errores** para tokens inválidos, expirados o manipulados
+
+Este módulo será la base del sistema de autenticación del microservicio y será utilizado por los servicios de login (Fase 5) y middlewares de protección (Fase 7).
 
 ---
-
+ 
 ## Alcance / No alcance
 
-### ✅ DENTRO DEL ALCANCE (Lo que SÍ haremos)
+### ✅ Dentro del Alcance
 
-1. **Instalación de dependencias:**
-   - Instalar `bcrypt` versión ^5.1.1
-   - Instalar `@types/bcrypt` versión ^5.0.2 como dependencia de desarrollo
+- Instalación de dependencias: `jsonwebtoken` y `@types/jsonwebtoken`
+- Creación del archivo `src/utils/jwt.ts` siguiendo los estándares del proyecto
+- Implementación de función `generateToken(userId: string, email: string): string`
+- Implementación de función `verifyToken(token: string): JwtPayload`
+- Configuración de expiración fija de 15 horas (`15h`)
+- Manejo de errores: `TokenExpiredError`, `JsonWebTokenError`, `NotBeforeError`
+- Definición de tipos TypeScript para payload JWT
+- Documentación JSDoc completa de todas las funciones
+- Uso de variable de entorno `JWT_SECRET` para firma
+- Validaciones de entrada (parámetros no vacíos)
+- Tests manuales básicos de generación y verificación
 
-2. **Creación de estructura:**
-   - Crear carpeta `src/utils/` si no existe
-   - Crear archivo `src/utils/password.ts`
+### ❌ Fuera del Alcance
 
-3. **Implementación de funciones core:**
-   - `hashPassword(password: string): Promise<string>`  
-     → Genera hash seguro de contraseña con salt rounds = 10
-   - `comparePassword(password: string, hash: string): Promise<boolean>`  
-     → Verifica si una contraseña coincide con su hash
-
-4. **Validaciones básicas:**
-   - Validar que la contraseña no esté vacía antes de hashear
-   - Validar que los parámetros no sean nulos/undefined
-   - Manejo de errores con try-catch y mensajes descriptivos
-
-5. **Documentación:**
-   - JSDoc completo para cada función explicando parámetros, retornos y errores
-   - Comentarios sobre consideraciones de seguridad
-   - Ejemplos de uso en comentarios
-
-6. **Testing manual:**
-   - Crear script de prueba `test-password.ts` para validar funcionalidad
-   - Verificar que el hash generado es diferente cada vez (por el salt)
-   - Verificar que comparePassword funciona correctamente
-
-### ❌ FUERA DEL ALCANCE (Lo que NO haremos en esta fase)
-
-1. **NO se implementará:**
-   - Lógica de políticas de contraseñas (longitud mínima, complejidad, etc.) → Fase 8
-   - Integración con controladores HTTP → Fase 5 y 6
-   - Implementación de servicios de autenticación → Fase 5
-   - Sistema de recuperación de contraseñas → Fase 10
-   - Almacenamiento en base de datos → Ya existe en UserRepositoryPort
-   - Rate limiting para intentos de validación → Futuro
-   - Rotación de secrets o peper adicionales → Futuro
-   - Testing automatizado con Jest/Mocha → Fase 9
-
-2. **NO se modificará:**
-   - Entidades de dominio (`User.ts`)
-   - Puertos e interfaces existentes
-   - Configuración de Supabase
-   - Rutas o controladores existentes
+- Implementación de refresh tokens (Fase 10 opcional)
+- Almacenamiento de tokens en base de datos
+- Blacklist de tokens revocados
+- Rotación automática de claves JWT
+- Tokens con scopes o permisos granulares
+- Middleware de autenticación (corresponde a Fase 7)
+- Integración con servicios de autenticación (corresponde a Fase 5)
+- Testing automatizado con Jest/Mocha
+- Rate limiting o protección contra fuerza bruta
 
 ---
-
+ 
 ## Definiciones (lenguaje de dominio)
 
-### Conceptos Clave
+### JWT (JSON Web Token)
+Token compacto y autocontenido que transmite información entre partes de forma segura. Estructura: `header.payload.signature` codificada en Base64URL.
 
-| Término | Definición | Contexto en el Sistema |
-|---------|-----------|------------------------|
-| **Password (Contraseña)** | Credencial secreta en texto plano proporcionada por el usuario para autenticación. | Nunca se almacena en texto plano. Se recibe en endpoints y se procesa inmediatamente. |
-| **Hash** | Resultado de aplicar función criptográfica unidireccional a una contraseña. Es irreversible. | Se almacena en campo `passwordHash` de la entidad User. |
-| **Salt** | Valor aleatorio único agregado a cada contraseña antes de hashearla para prevenir ataques con rainbow tables. | Generado automáticamente por bcrypt, incluido en el hash resultante. |
-| **Salt Rounds** | Número de iteraciones del algoritmo de hashing. Mayor rounds = más seguro pero más lento. | Valor configurado: 10 (estándar recomendado en 2026). |
-| **Bcrypt** | Algoritmo de hashing adaptativo basado en Blowfish, diseñado para ser lento y resistente a fuerza bruta. | Librería principal para hashing de contraseñas en este proyecto. |
-| **Password Hash Matching** | Proceso de verificar si una contraseña en texto plano corresponde a un hash almacenado. | Usado en proceso de login para validar credenciales. |
+### Payload
+Objeto JSON que contiene claims (afirmaciones) sobre el usuario. En este proyecto incluye:
+- `userId`: Identificador único del usuario (UUID)
+- `email`: Correo electrónico del usuario
+- `iat`: Timestamp de emisión (generado automáticamente)
+- `exp`: Timestamp de expiración (generado automáticamente)
 
-### Flujos del Sistema
+### JWT_SECRET
+Clave secreta utilizada para firmar y verificar tokens. Debe ser una cadena aleatoria de mínimo 64 caracteres guardada en variable de entorno.
 
-**Flujo 1: Creación de Contraseña (Primera vez)**
-```
-Usuario ingresa contraseña → hashPassword() → Hash generado → 
-Almacenar en BD (campo passwordHash) → Actualizar hasPassword = true
-```
+### Token Expirado
+Token cuyo campo `exp` indica una fecha/hora anterior al momento actual. Debe ser rechazado y requerir nuevo login.
 
-**Flujo 2: Validación de Contraseña (Login)**
-```
-Usuario ingresa contraseña → Recuperar hash de BD → 
-comparePassword(passwordIngresada, hashAlmacenado) → 
-Boolean (true = credenciales válidas, false = inválidas)
-```
+### Token Inválido
+Token con firma incorrecta, payload manipulado, o formato malformado. Indica intento de falsificación.
+
+### Expiración de 15 horas
+Duración temporal exacta del token desde su emisión. Después de este período, el token se considera expirado automáticamente.
+
+### HS256 (HMAC-SHA256)
+Algoritmo de firma simétrica utilizado por defecto en jsonwebtoken. Requiere la misma clave para firmar y verificar.
 
 ---
-
+ 
 ## Principios / Reglas no negociables
 
-### 🔒 Seguridad
+### 1. Seguridad de la Clave Secreta
+- ❌ **NUNCA** hardcodear `JWT_SECRET` en el código fuente
+- ✅ **SIEMPRE** leer `JWT_SECRET` desde variable de entorno
+- ✅ El servidor **DEBE fallar al iniciar** si `JWT_SECRET` no está definido o es muy corto (< 32 caracteres)
+- ✅ En producción, usar claves de mínimo 64 caracteres con alta entropía
 
-1. **NUNCA almacenar contraseñas en texto plano**
-   - Toda contraseña debe pasar por `hashPassword()` antes de persistir
-   - No loguear contraseñas en consola ni archivos
-   - No incluir contraseñas en respuestas HTTP
+### 2. Duración del Token No Modificable
+- ✅ La expiración **DEBE ser exactamente 15 horas** (`expiresIn: '15h'`)
+- ❌ No aceptar duración como parámetro configurable
+- ✅ Esta duración es un requerimiento de negocio explícito
 
-2. **Salt único por contraseña**
-   - Bcrypt genera salt automáticamente
-   - No reutilizar salts entre diferentes contraseñas
-   - Salt embebido en el hash (formato: `$2b$10$...`)
+### 3. Payload Mínimo y Sin Datos Sensibles
+- ✅ El payload **SOLO** debe contener: `userId` y `email`
+- ❌ **NUNCA** incluir: contraseñas, password_hash, tokens de terceros, datos financieros
+- ✅ El token será transmitido en headers HTTP y puede ser decodificado sin la clave
 
-3. **Uso de algoritmo moderno**
-   - Bcrypt es el estándar actual (2026)
-   - No usar MD5, SHA1 o algoritmos deprecados
-   - Mantener bcrypt actualizado para patches de seguridad
+### 4. Manejo Explícito de Errores
+- ✅ Diferenciar tipos de error: token expirado ≠ token inválido
+- ✅ Propagar errores específicos con mensajes claros
+- ❌ No retornar `null` o `undefined` silenciosamente
+- ✅ Lanzar excepciones tipadas que puedan ser capturadas en capas superiores
 
-4. **Resistencia a timing attacks**
-   - Bcrypt inherentemente resistente por diseño
-   - No implementar comparaciones naive de strings
-   - Usar siempre `bcrypt.compare()` para verificación
+### 5. Inmutabilidad del Token
+- ✅ Los tokens **NO deben ser modificables** después de generados
+- ✅ Cualquier cambio en el payload invalida la firma
+- ✅ Para actualizar información, generar un nuevo token
 
-### 🏗️ Arquitectura
+### 6. Validación de Parametros de Entrada
+- ✅ `userId` y `email` **NO** deben ser vacíos, undefined o null
+- ✅ `token` **NO** debe ser vacío, undefined o null
+- ✅ Validar antes de llamar a librerías externas
 
-5. **Independencia de frameworks**
-   - `password.ts` debe ser una utilidad pura
-   - No depender de Express, Supabase u otros frameworks
-   - Solo depender de bcrypt y tipos nativos de TypeScript
-
-6. **Reusabilidad**
-   - Funciones exportadas deben ser stateless
-   - No mantener estado interno en el módulo
-   - Facilitar testing unitario
-
-7. **Manejo de errores explícito**
-   - Propagar errores con mensajes claros
-   - No silenciar excepciones de bcrypt
-   - Retornar promesas rechazadas en caso de fallo
-
-### 📏 Código
-
-8. **TypeScript estricto**
-   - Todas las funciones con tipos explícitos
-   - No usar `any`
-   - Aprovechar `strict: true` del tsconfig.json
-
-9. **Programación asíncrona**
-   - Bcrypt es CPU-intensive, usar versiones async
-   - Retornar Promises en todas las funciones
-   - No usar versiones síncronas (bcryptSync)
-
-10. **Documentación obligatoria**
-    - JSDoc en todas las funciones públicas
-    - Explicar parámetros y valores de retorno
-    - Incluir ejemplos de uso
+### 7. Consistencia con Módulos Existentes
+- ✅ Seguir el mismo patrón de documentación que `password.ts`
+- ✅ Usar el mismo estilo de manejo de errores
+- ✅ Mantener estructura JSDoc consistente
 
 ---
-
+ 
 ## Límites
 
 ### Límites Técnicos
 
-| Límite | Valor | Justificación |
-|--------|-------|---------------|
-| **Salt Rounds** | 10 | Balance entre seguridad y performance. En hardware de 2026, ~100ms por hash. |
-| **Longitud mínima password** | N/A en esta fase | Se validará en Fase 8 (Validaciones). Bcrypt acepta hasta 72 bytes. |
-| **Encoding** | UTF-8 | Estándar web universal. Bcrypt trunca a 72 bytes internamente. |
-| **Tiempo máximo de hash** | ~150ms | En hardware promedio. Más de 200ms puede indicar problema. |
+**Tamaño del Token:**
+- Tokens JWT típicamente tienen entre 200-400 caracteres
+- Límite recomendado: < 8KB para compatibilidad con headers HTTP
+- Payload actual (userId + email) genera tokens de ~150-250 caracteres ✅
 
-### Límites de Responsabilidad
+**Expiración Temporal:**
+- Mínimo: No definido (tokens de corta duración no aplican a este caso de uso)
+- Establecido: **15 horas exactas** (requerimiento de negocio)
+- Máximo: Técnicamente ilimitado, pero no recomendado por seguridad
 
-**Este módulo ES responsable de:**
-- Generar hashes seguros de contraseñas
-- Verificar si una contraseña coincide con un hash
-- Validaciones básicas de inputs (no nulos, no vacíos)
-- Manejo de errores de bcrypt
+**Compatibilidad de Algoritmo:**
+- Usar **HS256** (HMAC-SHA256) - algoritmo simétrico por defecto
+- No usar RS256, ES256 (algoritmos asimétricos) en esta fase
 
-**Este módulo NO es responsable de:**
-- Validar complejidad de contraseñas (mayúsculas, números, etc.)
-- Almacenar contraseñas en base de datos
-- Implementar lógica de recuperación de contraseñas
-- Rate limiting o prevención de fuerza bruta
-- Autenticación JWT (Fase 4)
-- Gestión de sesiones
+**Precisión de Timestamp:**
+- Los campos `iat` y `exp` usan timestamps Unix en **segundos** (no milisegundos)
+- Reloj del servidor debe estar sincronizado (NTP recomendado)
+
+### Límites de Integración
+
+**Dependencias del Proyecto:**
+- Requiere `dotenv` configurado previamente (Fase 1 ✅)
+- Requiere variable `JWT_SECRET` en archivo `.env`
+- Compatible con Node.js 18+ y TypeScript 5.x
+
+**No gestiona:**
+- Transporte del token (será manejado por controllers/middlewares)
+- Almacenamiento del token (cliente es responsable)
+- Revocación/invalidación manual de tokens
 
 ### Límites de Performance
 
-- **Máximo 10 hashes simultáneos:** Bcrypt es CPU-bound. Para más carga, considerar queue.
-- **Un hash por request:** No hashear múltiples contraseñas en una sola operación HTTP.
-- **No cachear hashes:** Cada hash debe ser generado fresh con salt único.
+**Operaciones Sincrónicas:**
+- `jwt.sign()` y `jwt.verify()` son operaciones **síncronas rápidas** (< 1ms)
+- No requieren `async/await` ni generan cuellos de botella
+- Pueden procesar miles de tokens por segundo en hardware moderno
+
+**Carga de CPU:**
+- HS256 es computacionalmente ligero comparado con bcrypt
+- No requiere optimizaciones especiales para carga normal
 
 ---
-
+ 
 ## Eventos y estados (visión raíz)
 
-### Estados de una Contraseña en el Sistema
-
-```mermaid
-stateDiagram-v2
-    [*] --> NoExiste: Usuario creado en Supabase manualmente
-    NoExiste --> HashGenerado: hashPassword() ejecutado
-    HashGenerado --> Almacenado: Persistido en BD (passwordHash field)
-    Almacenado --> Validado: comparePassword() retorna true
-    Almacenado --> Rechazado: comparePassword() retorna false
-    Validado --> [*]: Login exitoso
-    Rechazado --> [*]: Login fallido
-    
-    note right of HashGenerado
-        Salt rounds: 10
-        Formato: $2b$10$...
-        Irreversible
-    end note
-    
-    note right of Validado
-        No se retorna el hash
-        Solo boolean true/false
-    end note
-```
-
-### Eventos Relacionados con Password Utils
-
-| Evento | Entrada | Salida | Efecto Secundario |
-|--------|---------|--------|-------------------|
-| **hashPassword()** | `password: string` | `Promise<string>` (hash) | CPU intensivo (~100ms) |
-| **comparePassword()** | `password: string, hash: string` | `Promise<boolean>` | Lectura de hash, comparación |
-| **Error: Empty Password** | `password: ""` | `throw Error` | Log de error |
-| **Error: Null Input** | `password: null` | `throw Error` | Log de error |
-| **Error: Bcrypt Failure** | Password inválido | `throw Error` | Propagación de error de bcrypt |
-
-### Interacción con Otras Capas
+### Flujo 1: Generación de Token
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│  INFRASTRUCTURE LAYER (Controllers)                      │
-│  - Recibe password en texto plano desde HTTP request    │
-└──────────────────┬──────────────────────────────────────┘
-                   │
-                   ▼
-┌─────────────────────────────────────────────────────────┐
-│  APPLICATION LAYER (Use Cases / Services)                │
-│  - Orquesta lógica de negocio                           │
-│  - Llama a UserRepository para operaciones BD           │
-└──────────────────┬──────────────────────────────────────┘
-                   │
-                   ▼
-┌─────────────────────────────────────────────────────────┐
-│  UTILS LAYER (password.ts) ← IMPLEMENTACIÓN FASE 3      │
-│  ┌───────────────────────────────────────────────────┐  │
-│  │ hashPassword(password)                            │  │
-│  │   → Genera hash bcrypt con salt rounds 10        │  │
-│  │                                                   │  │
-│  │ comparePassword(password, hash)                   │  │
-│  │   → Verifica match entre password y hash         │  │
-│  └───────────────────────────────────────────────────┘  │
-└──────────────────┬──────────────────────────────────────┘
-                   │
-                   ▼
-┌─────────────────────────────────────────────────────────┐
-│  DOMAIN LAYER (Entities & Ports)                         │
-│  - User.passwordHash (almacena el hash)                 │
-│  - User.hasPassword (flag booleano)                     │
-└─────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────┐
+│ INICIO: Usuario se autentica exitosamente                 │
+└──────────────────────┬─────────────────────────────────────┘
+                       │
+                       ▼
+         ┌─────────────────────────────┐
+         │ INPUT: userId + email       │
+         └──────────┬──────────────────┘
+                    │
+                    ▼
+         ┌─────────────────────────────┐
+         │ VALIDAR: Parámetros no      │
+         │ vacíos ni undefined         │
+         └──────────┬──────────────────┘
+                    │
+                    ├─── [❌ Inválidos] ──→ throw Error('Invalid input')
+                    │
+                    ▼ [✅ Válidos]
+         ┌─────────────────────────────┐
+         │ CONSTRUIR: payload = {      │
+         │   userId,                   │
+         │   email                     │
+         │ }                           │
+         └──────────┬──────────────────┘
+                    │
+                    ▼
+         ┌─────────────────────────────┐
+         │ FIRMAR: jwt.sign(           │
+         │   payload,                  │
+         │   JWT_SECRET,               │
+         │   { expiresIn: '15h' }      │
+         │ )                           │
+         └──────────┬──────────────────┘
+                    │
+                    ▼
+         ┌─────────────────────────────┐
+         │ OUTPUT: Token string        │
+         │ (formato: header.payload.   │
+         │  signature)                 │
+         └──────────┬──────────────────┘
+                    │
+                    ▼
+┌────────────────────────────────────────────────────────────┐
+│ FIN: Token listo para enviar al cliente                   │
+│ Estado: VÁLIDO por 15 horas desde ahora                   │
+└────────────────────────────────────────────────────────────┘
 ```
+
+**Estados del token generado:**
+- **VÁLIDO**: Desde `iat` hasta `exp` (15 horas)
+- **EXPIRADO**: Después de `exp`
 
 ---
 
+### Flujo 2: Verificación de Token
+
+```
+┌────────────────────────────────────────────────────────────┐
+│ INICIO: Cliente envía petición con token                  │
+└──────────────────────┬─────────────────────────────────────┘
+                       │
+                       ▼
+         ┌─────────────────────────────┐
+         │ INPUT: token string         │
+         └──────────┬──────────────────┘
+                    │
+                    ▼
+         ┌─────────────────────────────┐
+         │ VALIDAR: Token no vacío     │
+         └──────────┬──────────────────┘
+                    │
+                    ├─── [❌ Vacío] ──→ throw Error('Token required')
+                    │
+                    ▼ [✅ Presente]
+         ┌─────────────────────────────────────────────┐
+         │ VERIFICAR: jwt.verify(token, JWT_SECRET)    │
+         └──────────┬────────────────────────────┬─────┘
+                    │                            │
+                    ▼                            │
+            [✅ Verificación OK]                 │
+         ┌─────────────────────────────┐         │
+         │ EXTRAER: payload = {        │         │
+         │   userId,                   │         │
+         │   email,                    │         │
+         │   iat,                      │         │
+         │   exp                       │         │
+         │ }                           │         │
+         └──────────┬──────────────────┘         │
+                    │                            │
+                    ▼                            │
+         ┌─────────────────────────────┐         │
+         │ OUTPUT: JwtPayload          │         │
+         └──────────┬──────────────────┘         │
+                    │                            │
+                    ▼                            │
+┌────────────────────────────────────┐           │
+│ FIN: Token verificado correctamente│           │
+│ Estado: AUTENTICADO                │           │
+└────────────────────────────────────┘           │
+                                                 │
+                         [❌ Error de verificación]
+                                                 │
+                         ┌───────────────────────┴────────┐
+                         │                                │
+                         ▼                                ▼
+              ┌────────────────────┐         ┌──────────────────────┐
+              │ TokenExpiredError  │         │ JsonWebTokenError    │
+              │ Token expirado     │         │ Token inválido       │
+              │ (> 15 horas)       │         │ o firma incorrecta   │
+              └─────────┬──────────┘         └──────────┬───────────┘
+                        │                               │
+                        ▼                               ▼
+              throw Error('Token expired')   throw Error('Invalid token')
+                        │                               │
+                        ▼                               ▼
+            ┌─────────────────────────────────────────────┐
+            │ FIN: Autenticación rechazada                │
+            │ Estado: NO AUTENTICADO                      │
+            │ Acción: Cliente debe hacer login            │
+            └─────────────────────────────────────────────┘
+```
+
+**Estados posibles en verificación:**
+- **VÁLIDO Y NO EXPIRADO**: Token aceptado, usuario autenticado
+- **EXPIRADO**: Token rechazado, usuario debe hacer login de nuevo
+- **INVÁLIDO**: Token manipulado o firma incorrecta, usuario debe hacer login
+- **MALFORMADO**: Formato incorrecto, usuario debe hacer login
+
+---
+
+### Diagrama de Estados del Token (Lifecycle)
+
+```
+                    generateToken()
+                          │
+                          ▼
+          ┌───────────────────────────────┐
+          │      TOKEN GENERADO           │
+          │   Estado: VÁLIDO (FRESH)      │
+          │   Edad: 0h                    │
+          │   Tiempo restante: 15h        │
+          └───────────────┬───────────────┘
+                          │
+                   (tiempo transcurre)
+                          │
+                          ▼
+          ┌───────────────────────────────┐
+          │      TOKEN ACTIVO             │
+          │   Estado: VÁLIDO (ACTIVE)     │
+          │   Edad: 0-15h                 │
+          │   Tiempo restante: 15h-0h     │
+          │   ✅ verifyToken() retorna OK │
+          └───────────────┬───────────────┘
+                          │
+                  (15h pasan desde iat)
+                          │
+                          ▼
+          ┌───────────────────────────────┐
+          │      TOKEN EXPIRADO           │
+          │   Estado: EXPIRADO            │
+          │   Edad: > 15h                 │
+          │   Tiempo restante: 0h         │
+          │   ❌ verifyToken() lanza      │
+          │      TokenExpiredError        │
+          └───────────────────────────────┘
+                          │
+                          ▼
+              (Token descartado, requiere login)
+
+
+                    ┌──────────────────┐
+                    │  TOKEN INVÁLIDO  │ ◄─── [manipulación detectada]
+                    │  Estado: INVÁLIDO│
+                    │  ❌ verifyToken() │
+                    │     lanza error   │
+                    └──────────────────┘
+```
+
+---
+ 
 ## Criterios de aceptación (root)
 
-### ✅ Criterio 1: Dependencias Instaladas
+### CA-1: Instalación de Dependencias
+**DADO** un proyecto Node.js con package.json configurado  
+**CUANDO** se ejecuta el comando de instalación de JWT  
+**ENTONCES**:
+- [ ] `jsonwebtoken` versión ^9.0.0 o superior está instalado como dependencia de producción
+- [ ] `@types/jsonwebtoken` está instalado como dependencia de desarrollo
+- [ ] Las dependencias aparecen en `package.json` correctamente
+- [ ] `package-lock.json` se actualiza sin conflictos
+- [ ] El comando `npm list jsonwebtoken` confirma la instalación exitosa
 
-**DADO** que el proyecto Loggin-MCP está inicializado con npm  
-**CUANDO** se ejecuta `npm install`  
-**ENTONCES:**
-- ✅ `bcrypt` versión ^5.1.1 está en `dependencies` del package.json
-- ✅ `@types/bcrypt` versión ^5.0.2 está en `devDependencies`
-- ✅ No hay errores de instalación ni vulnerabilidades críticas
-- ✅ `node_modules/bcrypt/` contiene binarios nativos compilados correctamente
-
-**Validación:**
+**Comando de instalación:**
 ```bash
-npm list bcrypt
-npm list @types/bcrypt
+npm install jsonwebtoken
+npm install --save-dev @types/jsonwebtoken
 ```
 
 ---
 
-### ✅ Criterio 2: Estructura de Archivos
+### CA-2: Creación del Archivo jwt.ts
+**DADO** la estructura de carpetas del proyecto  
+**CUANDO** se crea el archivo de utilidades JWT  
+**ENTONCES**:
+- [ ] Existe archivo en ruta exacta: `src/utils/jwt.ts`
+- [ ] El archivo contiene comentario de módulo siguiendo patrón de `password.ts`
+- [ ] El archivo importa correctamente: `import * as jwt from 'jsonwebtoken';`
+- [ ] El archivo exporta al menos 2 funciones: `generateToken` y `verifyToken`
+- [ ] El archivo define interfaz TypeScript `JwtPayload` con campos `userId` y `email`
+- [ ] El archivo compila sin errores TypeScript (`npm run build`)
 
-**DADO** que las dependencias están instaladas  
-**CUANDO** se revisa la estructura del proyecto  
-**ENTONCES:**
-- ✅ Existe carpeta `src/utils/`
-- ✅ Existe archivo `src/utils/password.ts`
-- ✅ El archivo tiene permisos de lectura/escritura
-- ✅ El archivo está bajo control de versiones Git
-
-**Estructura esperada:**
-```
-src/
-├── utils/
-│   └── password.ts  ← NUEVO ARCHIVO
-├── domain/
-├── application/
-└── infrastructure/
-```
-
----
-
-### ✅ Criterio 3: Función hashPassword() Implementada
-
-**DADO** que `src/utils/password.ts` existe  
-**CUANDO** se importa y ejecuta `hashPassword()`  
-**ENTONCES:**
-
-**3.1. Firma de función correcta:**
-```typescript
-export async function hashPassword(password: string): Promise<string>
-```
-
-**3.2. Comportamiento con input válido:**
-```typescript
-const hash = await hashPassword("MiContraseña123!");
-// ✅ hash empieza con "$2b$10$" (formato bcrypt)
-// ✅ hash tiene longitud ~60 caracteres
-// ✅ hash es diferente cada vez que se ejecuta (por salt aleatorio)
-```
-
-**3.3. Validaciones de input:**
-```typescript
-// ✅ Lanza error si password es string vacío
-await hashPassword("") // → throw Error("Password cannot be empty")
-
-// ✅ Lanza error si password es null/undefined
-await hashPassword(null!) // → throw Error
-```
-
-**3.4. Documentación JSDoc presente:**
+**Estructura esperada del archivo:**
 ```typescript
 /**
- * Genera un hash seguro de una contraseña usando bcrypt.
+ * JWT Utility Module
  * 
- * @param password - Contraseña en texto plano a hashear
- * @returns Promise que resuelve al hash de la contraseña
- * @throws {Error} Si password está vacío o es inválido
+ * Proporciona funciones para generación y verificación de JSON Web Tokens
+ * [descripción detallada...]
  * 
- * @example
- * const hash = await hashPassword("MiPassword123!");
- * // hash = "$2b$10$N9qo8uLO..."
+ * @module utils/jwt
  */
-```
 
-**3.5. Performance:**
-- ✅ Completar en menos de 200ms en hardware promedio de 2026
-- ✅ Salt rounds configurado en 10
+import * as jwt from 'jsonwebtoken';
 
----
-
-### ✅ Criterio 4: Función comparePassword() Implementada
-
-**DADO** que `src/utils/password.ts` existe  
-**CUANDO** se importa y ejecuta `comparePassword()`  
-**ENTONCES:**
-
-**4.1. Firma de función correcta:**
-```typescript
-export async function comparePassword(
-  password: string, 
-  hash: string
-): Promise<boolean>
-```
-
-**4.2. Comportamiento con password correcta:**
-```typescript
-const hash = await hashPassword("Password123!");
-const isValid = await comparePassword("Password123!", hash);
-// ✅ isValid === true
-```
-
-**4.3. Comportamiento con password incorrecta:**
-```typescript
-const hash = await hashPassword("Password123!");
-const isValid = await comparePassword("WrongPassword", hash);
-// ✅ isValid === false
-```
-
-**4.4. Case sensitivity:**
-```typescript
-const hash = await hashPassword("Password123!");
-const isValid = await comparePassword("password123!", hash);
-// ✅ isValid === false (distingue mayúsculas/minúsculas)
-```
-
-**4.5. Validaciones de input:**
-```typescript
-// ✅ Lanza error si password vacío
-await comparePassword("", hash) // → throw Error
-
-// ✅ Lanza error si hash inválido
-await comparePassword("pass", "invalid-hash") // → throw Error
-```
-
-**4.6. Documentación JSDoc presente:**
-```typescript
-/**
- * Compara una contraseña en texto plano con su hash bcrypt.
- * 
- * @param password - Contraseña en texto plano a verificar
- * @param hash - Hash bcrypt almacenado previamente
- * @returns Promise que resuelve a true si coinciden, false si no
- * @throws {Error} Si los parámetros son inválidos
- * 
- * @example
- * const isValid = await comparePassword("userInput", storedHash);
- * if (isValid) {
- *   // Login exitoso
- * }
- */
-```
-
----
-
-### ✅ Criterio 5: Testing Manual Exitoso
-
-**DADO** que ambas funciones están implementadas  
-**CUANDO** se crea y ejecuta script de prueba `test-password.ts`  
-**ENTONCES:**
-
-**5.1. Script de prueba creado:**
-```typescript
-// test-password.ts en raíz del proyecto
-import { hashPassword, comparePassword } from './src/utils/password';
-
-async function testPasswordModule() {
-  console.log('🧪 Testing Password Module...\n');
-
-  // Test 1: Hash generation
-  console.log('Test 1: Generating hash...');
-  const password = 'TestPassword123!';
-  const hash1 = await hashPassword(password);
-  const hash2 = await hashPassword(password);
-  console.log('Hash 1:', hash1);
-  console.log('Hash 2:', hash2);
-  console.log('✅ Hashes are different (salt is unique):', hash1 !== hash2);
-
-  // Test 2: Correct password validation
-  console.log('\nTest 2: Valid password comparison...');
-  const isValid = await comparePassword(password, hash1);
-  console.log('✅ Password matches:', isValid === true);
-
-  // Test 3: Incorrect password validation
-  console.log('\nTest 3: Invalid password comparison...');
-  const isInvalid = await comparePassword('WrongPassword', hash1);
-  console.log('✅ Wrong password rejected:', isInvalid === false);
-
-  // Test 4: Empty password handling
-  console.log('\nTest 4: Empty password validation...');
-  try {
-    await hashPassword('');
-    console.log('❌ Should have thrown error');
-  } catch (error) {
-    console.log('✅ Error thrown for empty password');
-  }
-
-  console.log('\n✅ All tests passed!');
+// Interfaces
+export interface JwtPayload {
+  userId: string;
+  email: string;
 }
 
-testPasswordModule().catch(console.error);
+// Funciones exportadas
+export function generateToken(userId: string, email: string): string { /* ... */ }
+export function verifyToken(token: string): JwtPayload & jwt.JwtPayload { /* ... */ }
 ```
 
-**5.2. Ejecución del test:**
+---
+
+### CA-3: Función generateToken() - Implementación Básica
+**DADO** un userId y email válidos  
+**CUANDO** se llama a `generateToken(userId, email)`  
+**ENTONCES**:
+- [ ] La función retorna un string no vacío
+- [ ] El string retornado tiene formato JWT válido: 3 secciones separadas por `.`
+- [ ] El token puede ser decodificado con `jwt.decode()` sin errores
+- [ ] El payload decodificado contiene `userId` con el valor exacto proporcionado
+- [ ] El payload decodificado contiene `email` con el valor exacto proporcionado
+- [ ] El payload decodificado contiene campo `iat` (issued at) con timestamp actual
+- [ ] El payload decodificado contiene campo `exp` (expiration) con timestamp `iat + 15 horas`
+- [ ] La función es determinista: mismo input NO genera el mismo token (debido a `iat` dinámico)
+
+**Ejemplo de uso:**
+```typescript
+const token = generateToken('123e4567-e89b-12d3-a456-426614174000', 'user@example.com');
+console.log(token); 
+// Output esperado: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiIxMjNlNDU2Ny1lODliLTEyZDMtYTQ1Ni00MjY2MTQxNzQwMDAiLCJlbWFpbCI6InVzZXJAZXhhbXBsZS5jb20iLCJpYXQiOjE3MDk2MDE2MjcsImV4cCI6MTcwOTY1NTYyN30.XYZ..."
+```
+
+---
+
+### CA-4: Función generateToken() - Uso de JWT_SECRET
+**DADO** una variable de entorno `JWT_SECRET` configurada  
+**CUANDO** se genera un token  
+**ENTONCES**:
+- [ ] La función lee `JWT_SECRET` desde `process.env.JWT_SECRET`
+- [ ] Si `JWT_SECRET` es `undefined` o vacío, lanza error claro: `'JWT_SECRET is not defined in environment variables'`
+- [ ] Si `JWT_SECRET` tiene menos de 32 caracteres, lanza error: `'JWT_SECRET must be at least 32 characters long'`
+- [ ] El token generado está firmado con el valor de `JWT_SECRET`
+- [ ] La firma puede ser verificada usando el mismo `JWT_SECRET`
+- [ ] La firma NO puede ser verificada usando un `JWT_SECRET` diferente
+
+**Validación de seguridad:**
+```typescript
+// ❌ Esto debe fallar:
+process.env.JWT_SECRET = 'short';
+generateToken('user123', 'user@test.com'); // throw Error
+
+// ✅ Esto debe funcionar:
+process.env.JWT_SECRET = 'my-super-secret-key-with-at-least-32-characters-for-security';
+generateToken('user123', 'user@test.com'); // retorna token válido
+```
+
+---
+
+### CA-5: Función generateToken() - Expiración de 15 Horas
+**DADO** un token recién generado  
+**CUANDO** se decodifica el token  
+**ENTONCES**:
+- [ ] El campo `exp` existe en el payload
+- [ ] El campo `exp` es un número (timestamp Unix en segundos)
+- [ ] La diferencia entre `exp` y `iat` es exactamente 54000 segundos (15 horas)
+- [ ] `exp - iat === 54000` ✅
+- [ ] La configuración usa la notación `expiresIn: '15h'` en `jwt.sign()`
+
+**Cálculo esperado:**
+```
+15 horas = 15 × 60 minutos/hora × 60 segundos/minuto = 54,000 segundos
+```
+
+**Verificación:**
+```typescript
+const token = generateToken('user123', 'user@example.com');
+const decoded = jwt.decode(token) as jwt.JwtPayload;
+
+console.log(decoded.iat); // Ej: 1709601627 (5 marzo 2026, 10:00:27 AM)
+console.log(decoded.exp); // Ej: 1709655627 (6 marzo 2026, 01:00:27 AM)
+console.log(decoded.exp! - decoded.iat!); // Debe ser: 54000 ✅
+```
+
+---
+
+### CA-6: Función generateToken() - Validación de Entrada
+**DADO** parámetros inválidos  
+**CUANDO** se llama a `generateToken()` con valores incorrectos  
+**ENTONCES**:
+
+| Input                              | Comportamiento Esperado                                   | Validación |
+|------------------------------------|-----------------------------------------------------------|------------|
+| `generateToken('', 'user@test.com')` | Lanza Error: 'userId cannot be empty'                   | [ ]        |
+| `generateToken('user123', '')`      | Lanza Error: 'email cannot be empty'                     | [ ]        |
+| `generateToken(null as any, 'email')` | Lanza Error: 'userId cannot be empty'                   | [ ]        |
+| `generateToken('id', undefined as any)` | Lanza Error: 'email cannot be empty'                  | [ ]        |
+| `generateToken('  ', 'email')`      | Lanza Error: 'userId cannot be empty' (trim validado)    | [ ]        |
+| `generateToken('id', '  ')`         | Lanza Error: 'email cannot be empty' (trim validado)     | [ ]        |
+| `generateToken('valid-id', 'valid@email.com')` | Retorna token exitosamente            | [ ]        |
+
+**Nota:** Las validaciones deben ejecutarse ANTES de llamar a `jwt.sign()`.
+
+---
+
+### CA-7: Función verifyToken() - Verificación Exitosa
+**DADO** un token válido y no expirado  
+**CUANDO** se llama a `verifyToken(token)`  
+**ENTONCES**:
+- [ ] La función retorna un objeto (no lanza error)
+- [ ] El objeto retornado contiene propiedad `userId` con valor correcto
+- [ ] El objeto retornado contiene propiedad `email` con valor correcto
+- [ ] El objeto retornado contiene propiedad `iat` (número)
+- [ ] El objeto retornado contiene propiedad `exp` (número)
+- [ ] El tipo de retorno es `JwtPayload & jwt.JwtPayload` (combina ambas interfaces)
+- [ ] La función NO modifica el token original
+
+**Ejemplo de flujo exitoso:**
+```typescript
+// Paso 1: Generar token
+const token = generateToken('user-uuid-123', 'john@example.com');
+
+// Paso 2: Verificar inmediatamente (token fresco, no expirado)
+const payload = verifyToken(token);
+
+// Paso 3: Aserciones
+console.log(payload.userId);  // 'user-uuid-123' ✅
+console.log(payload.email);   // 'john@example.com' ✅
+console.log(typeof payload.iat); // 'number' ✅
+console.log(typeof payload.exp); // 'number' ✅
+```
+
+---
+
+### CA-8: Función verifyToken() - Token Expirado
+**DADO** un token cuyo campo `exp` es anterior a la hora actual  
+**CUANDO** se llama a `verifyToken(token)`  
+**ENTONCES**:
+- [ ] La función lanza una excepción (no retorna valor)
+- [ ] El error capturado es de tipo `jwt.TokenExpiredError`
+- [ ] El mensaje de error contiene 'expired' o 'Token has expired'
+- [ ] El error incluye información sobre `expiredAt` (fecha de expiración)
+- [ ] La función NO retorna `null` ni `undefined`
+
+**Simulación de token expirado:**
+```typescript
+// Token generado hace 16 horas (> 15 horas de TTL)
+const expiredToken = jwt.sign(
+  { userId: 'test', email: 'test@example.com' },
+  process.env.JWT_SECRET!,
+  { expiresIn: -1 } // Truco: expiración negativa para testing
+);
+
+// Intentar verificar
+try {
+  verifyToken(expiredToken);
+  console.log('❌ NO DEBERÍA LLEGAR AQUÍ');
+} catch (error) {
+  console.log(error.name); // 'TokenExpiredError' ✅
+  console.log(error.message); // 'jwt expired' ✅
+}
+```
+
+**Nota:** En producción, esperar 15+ horas no es práctico para testing. Ver CA-11 para estrategias de prueba.
+
+---
+
+### CA-9: Función verifyToken() - Token Inválido o Manipulado
+**DADO** un token con firma incorrecta, payload alterado o formato malformado  
+**CUANDO** se llama a `verifyToken(token)`  
+**ENTONCES**:
+- [ ] La función lanza una excepción de tipo `jwt.JsonWebTokenError`
+- [ ] El mensaje de error indica el problema: 'invalid signature', 'malformed', 'invalid token'
+- [ ] Casos específicos manejados:
+
+| Escenario | Token de Prueba | Error Esperado |
+|-----------|----------------|----------------|
+| Firma incorrecta | Token generado con otro JWT_SECRET | `JsonWebTokenError: invalid signature` |
+| Payload modificado | Token con payload alterado manualmente | `JsonWebTokenError: invalid signature` |
+| Formato malformado | `'not.a.valid.jwt.format.at.all'` | `JsonWebTokenError: jwt malformed` |
+| Token vacío | `''` | Error: 'Token is required' |
+| Token sin secciones | `'invalidsinglestring'` | `JsonWebTokenError: jwt malformed` |
+
+**Ejemplo de verificación de manipulación:**
+```typescript
+const validToken = generateToken('user123', 'user@example.com');
+
+// Manipular token (cambiar un carácter en la firma)
+const manipulatedToken = validToken.slice(0, -5) + 'XXXXX';
+
+try {
+  verifyToken(manipulatedToken);
+  console.log('❌ NO DEBERÍA LLEGAR AQUÍ');
+} catch (error) {
+  console.log(error.name); // 'JsonWebTokenError' ✅
+  console.log(error.message); // 'invalid signature' ✅
+}
+```
+
+---
+
+### CA-10: Función verifyToken() - Validación de Entrada
+**DADO** parámetros inválidos  
+**CUANDO** se llama a `verifyToken()` con valores incorrectos  
+**ENTONCES**:
+
+| Input                     | Comportamiento Esperado                         | Validación |
+|---------------------------|-------------------------------------------------|------------|
+| `verifyToken('')`         | Lanza Error: 'Token is required'                | [ ]        |
+| `verifyToken(null as any)` | Lanza Error: 'Token is required'               | [ ]        |
+| `verifyToken(undefined as any)` | Lanza Error: 'Token is required'          | [ ]        |
+| `verifyToken('  ')`       | Lanza Error: 'Token is required' (trim aplicado) | [ ]        |
+| `verifyToken('valid.jwt.token')` | Procesa verificación (puede lanzar JsonWebTokenError si inválido) | [ ]        |
+
+**Nota:** Las validaciones básicas deben ejecutarse ANTES de llamar a `jwt.verify()`.
+
+---
+
+### CA-11: Testing Manual Completo
+**DADO** el módulo JWT implementado completamente  
+**CUANDO** se ejecutan pruebas manuales de integración  
+**ENTONCES** los siguientes casos de prueba pasan:
+
+#### ✅ Test 1: Ciclo Completo Exitoso
+```typescript
+// 1. Generar token
+const token = generateToken('uuid-test-123', 'test@example.com');
+console.log('Token generado:', token.substring(0, 50) + '...');
+
+// 2. Verificar inmediatamente
+const payload = verifyToken(token);
+console.log('✅ userId:', payload.userId === 'uuid-test-123');
+console.log('✅ email:', payload.email === 'test@example.com');
+console.log('✅ iat presente:', typeof payload.iat === 'number');
+console.log('✅ exp presente:', typeof payload.exp === 'number');
+console.log('✅ Duración:', (payload.exp! - payload.iat!) === 54000);
+```
+- [ ] Todos los console.log muestran `true` o valores correctos
+
+#### ✅ Test 2: Token Expirado
+```typescript
+// Generar token con expiración de 1 segundo para testing
+const shortLivedToken = jwt.sign(
+  { userId: 'test', email: 'test@test.com' },
+  process.env.JWT_SECRET!,
+  { expiresIn: '1s' }
+);
+
+// Esperar 2 segundos
+setTimeout(() => {
+  try {
+    verifyToken(shortLivedToken);
+    console.log('❌ FALLÓ: Debería haber lanzado error');
+  } catch (error) {
+    console.log('✅ Token expirado detectado:', error.message);
+  }
+}, 2000);
+```
+- [ ] Captura error de token expirado correctamente
+
+#### ✅ Test 3: Token Manipulado
+```typescript
+const token = generateToken('user123', 'user@test.com');
+const parts = token.split('.');
+const manipulated = parts[0] + '.' + parts[1] + '.FAKE_SIGNATURE';
+
+try {
+  verifyToken(manipulated);
+  console.log('❌ FALLÓ: Debería rechazar firma inválida');
+} catch (error) {
+  console.log('✅ Firma inválida detectada:', error.message);
+}
+```
+- [ ] Detecta manipulación de firma
+
+#### ✅ Test 4: JWT_SECRET Incorrecto
+```typescript
+const token = generateToken('user123', 'user@test.com');
+
+// Cambiar JWT_SECRET temporalmente
+const originalSecret = process.env.JWT_SECRET;
+process.env.JWT_SECRET = 'different-secret-key-that-wont-match-original';
+
+try {
+  verifyToken(token);
+  console.log('❌ FALLÓ: Debería rechazar con secret diferente');
+} catch (error) {
+  console.log('✅ Secret incorrecto detectado:', error.message);
+}
+
+// Restaurar secret original
+process.env.JWT_SECRET = originalSecret;
+```
+- [ ] Rechaza tokens firmados con diferentes secretos
+
+#### ✅ Test 5: Validaciones de Entrada
+```typescript
+const testCases = [
+  { fn: () => generateToken('', 'email@test.com'), expected: 'userId cannot be empty' },
+  { fn: () => generateToken('user', ''), expected: 'email cannot be empty' },
+  { fn: () => verifyToken(''), expected: 'Token is required' },
+];
+
+testCases.forEach((test, idx) => {
+  try {
+    test.fn();
+    console.log(`❌ Test ${idx + 1} FALLÓ: No lanzó error`);
+  } catch (error) {
+    console.log(`✅ Test ${idx + 1}: ${error.message}`);
+  }
+});
+```
+- [ ] Todas las validaciones de entrada funcionan correctamente
+
+---
+
+### CA-12: Documentación JSDoc Completa
+**DADO** el archivo `jwt.ts` implementado  
+**CUANDO** se revisa la documentación del código  
+**ENTONCES**:
+- [ ] Existe comentario de módulo al inicio del archivo con descripción del propósito
+- [ ] La interfaz `JwtPayload` tiene JSDoc explicando cada propiedad
+- [ ] `generateToken()` tiene JSDoc con:
+  - Descripción de la función
+  - `@param userId` con descripción y tipo
+  - `@param email` con descripción y tipo
+  - `@returns` explicando qué retorna
+  - `@throws` listando posibles errores
+  - Ejemplo de uso con bloque `@example`
+- [ ] `verifyToken()` tiene JSDoc con:
+  - Descripción de la función
+  - `@param token` con descripción
+  - `@returns` explicando el payload retornado
+  - `@throws` listando errores: TokenExpiredError, JsonWebTokenError, etc.
+  - Ejemplo de uso con bloque `@example`
+- [ ] Comentarios inline explican lógica compleja (validaciones, manejo de errores)
+- [ ] El estilo de documentación es consistente con `src/utils/password.ts`
+
+**Ejemplo de estándar esperado:**
+```typescript
+/**
+ * Genera un JSON Web Token firmado con información del usuario.
+ * 
+ * El token generado tiene una duración fija de 15 horas y contiene
+ * el identificador único del usuario y su correo electrónico.
+ * La firma utiliza la clave secreta definida en JWT_SECRET.
+ * 
+ * @param userId - Identificador único del usuario (UUID recomendado)
+ * @param email - Correo electrónico del usuario
+ * @returns Token JWT firmado en formato string (header.payload.signature)
+ * @throws {Error} Si userId o email están vacíos
+ * @throws {Error} Si JWT_SECRET no está configurado o es muy corto
+ * 
+ * @example
+ * ```typescript
+ * const token = generateToken('123e4567-e89b-12d3-a456-426614174000', 'user@example.com');
+ * // token: "eyJhbGc...XYZ"
+ * ```
+ */
+export function generateToken(userId: string, email: string): string {
+  // ... implementación
+}
+```
+
+---
+
+### CA-13: Integración con Variables de Entorno
+**DADO** el archivo `.env` del proyecto  
+**CUANDO** se configura `JWT_SECRET`  
+**ENTONCES**:
+- [ ] Existe entrada `JWT_SECRET` en `.env.example` como template
+- [ ] `.env.example` incluye comentario explicando: "Clave secreta para firmar JWT (mínimo 64 caracteres en producción)"
+- [ ] El archivo `jwt.ts` lee `JWT_SECRET` correctamente desde `process.env.JWT_SECRET`
+- [ ] Si `JWT_SECRET` no está definido, el módulo falla al intentar generar tokens (no falla al importar)
+- [ ] En `.env` local, existe una entrada real de `JWT_SECRET` con longitud adecuada
+
+**Contenido de .env.example esperado:**
 ```bash
-npx ts-node test-password.ts
+# JWT Configuration
+# Clave secreta para firmar tokens de autenticación
+# IMPORTANTE: En producción usar mínimo 64 caracteres aleatorios
+# Generar con: openssl rand -base64 64
+JWT_SECRET=your-super-secret-jwt-key-change-this-in-production-min-64-chars
 ```
 
-**5.3. Output esperado:**
-```
-🧪 Testing Password Module...
-
-Test 1: Generating hash...
-Hash 1: $2b$10$abcdefghijklmnopqrstuv...
-Hash 2: $2b$10$zyxwvutsrqponmlkjihgfe...
-✅ Hashes are different (salt is unique): true
-
-Test 2: Valid password comparison...
-✅ Password matches: true
-
-Test 3: Invalid password comparison...
-✅ Wrong password rejected: true
-
-Test 4: Empty password validation...
-✅ Error thrown for empty password
-
-✅ All tests passed!
+**Verificación de lectura:**
+```typescript
+console.log('JWT_SECRET configurado:', !!process.env.JWT_SECRET); // true ✅
+console.log('Longitud:', process.env.JWT_SECRET?.length); // >= 32 ✅
 ```
 
 ---
 
-### ✅ Criterio 6: Código Cumple Estándares
+### CA-14: Tipado TypeScript Completo
+**DADO** el código TypeScript implementado  
+**CUANDO** se compila el proyecto con `npm run build`  
+**ENTONCES**:
+- [ ] No existen errores de compilación TypeScript
+- [ ] No existen warnings de tipos `any` implícitos
+- [ ] La interfaz `JwtPayload` está correctamente exportada
+- [ ] Las funciones tienen tipos de retorno explícitos (no inferidos)
+- [ ] Los parámetros tienen tipos explícitos
+- [ ] El tipo de retorno de `verifyToken` es `JwtPayload & jwt.JwtPayload` (combina ambas interfaces)
+- [ ] IntelliSense/autocompletado funciona correctamente en VSCode al importar el módulo
 
-**DADO** que el código está implementado  
-**CUANDO** se revisa el código  
-**ENTONCES:**
-
-**6.1. TypeScript sin errores:**
-```bash
-npx tsc --noEmit
-# ✅ Sin errores de compilación
-```
-
-**6.2. Cumple con TSConfig strict mode:**
-- ✅ No hay tipos `any`
-- ✅ Todos los parámetros tipados
-- ✅ Retornos explícitos
-- ✅ Null checks apropiados
-
-**6.3. Formato y estilo:**
-- ✅ Indentación consistente (2 espacios)
-- ✅ Nombres descriptivos (`hashPassword`, no `hp`)
-- ✅ Camel case para funciones
-- ✅ Comentarios claros y concisos
-
-**6.4. Imports correctos:**
+**Verificación de tipos:**
 ```typescript
-import * as bcrypt from 'bcrypt';
-// o
-import bcrypt from 'bcrypt';
-```
+import { generateToken, verifyToken, JwtPayload } from './utils/jwt';
 
-**6.5. No hay código comentado innecesario**
+// TypeScript debe inferir tipos correctamente
+const token: string = generateToken('id', 'email'); // ✅
+const payload: JwtPayload = verifyToken(token); // ✅
 
-**6.6. No hay console.log en código de producción** (solo en test)
-
----
-
-### ✅ Criterio 7: Seguridad Validada
-
-**DADO** que el módulo está implementado  
-**CUANDO** se revisa la implementación desde perspectiva de seguridad  
-**ENTONCES:**
-
-**7.1. Salt rounds adecuado:**
-```typescript
-const SALT_ROUNDS = 10; // ✅ Valor recomendado
-```
-
-**7.2. No se exponen contraseñas:**
-- ✅ No hay console.log con contraseñas
-- ✅ Errores no incluyen contraseñas en mensajes
-- ✅ Funciones no retornan contraseñas originales
-
-**7.3. Uso correcto de bcrypt:**
-- ✅ Se usa `bcrypt.hash()` no manualmente salt + hash
-- ✅ Se usa `bcrypt.compare()` para validación
-- ✅ Se usan versiones asíncronas (no síncronas)
-
-**7.4. Manejo de errores seguro:**
-```typescript
-// ✅ No revelar si el hash es inválido vs password incorrecta
-// En ambos casos retornar false o error genérico
-```
-
-**7.5. Resistencia a timing attacks:**
-- ✅ Bcrypt inherentemente resistente
-- ✅ No se implementan comparaciones custom
-
----
-
-### ✅ Criterio 8: Documentación Completa
-
-**DADO** que el módulo está implementado  
-**CUANDO** se revisa la documentación  
-**ENTONCES:**
-
-**8.1. JSDoc en todas las funciones exportadas:**
-- ✅ Descripción de la función
-- ✅ @param para cada parámetro  
-- ✅ @returns explicando qué retorna
-- ✅ @throws para errores posibles
-- ✅ @example con uso práctico
-
-**8.2. Comentarios inline donde sea necesario:**
-```typescript
-// Bcrypt genera salt automáticamente con genSalt incluido en hash()
-const hash = await bcrypt.hash(password, SALT_ROUNDS);
-```
-
-**8.3. README.md actualizado** (opcional en esta fase, pero recomendado):
-```markdown
-## 🔒 Password Module (Fase 3)
-
-Módulo de utilidades para hashing y validación de contraseñas usando bcrypt.
-
-### Funciones
-
-- `hashPassword(password: string): Promise<string>`
-- `comparePassword(password: string, hash: string): Promise<boolean>`
-
-### Ejemplo de uso
-
-\`\`\`typescript
-import { hashPassword, comparePassword } from './utils/password';
-
-// Al crear contraseña
-const hash = await hashPassword(userInput);
-await userRepository.updatePassword(userId, hash);
-
-// Al hacer login
-const storedHash = user.passwordHash;
-const isValid = await comparePassword(userInput, storedHash);
-\`\`\`
+// TypeScript debe detectar errores
+const wrongToken: number = generateToken('id', 'email'); // ❌ Error de compilación
+const wrongPayload: string = verifyToken(token); // ❌ Error de compilación
 ```
 
 ---
 
+### CA-15: Manejo de Errores Específicos
+**DADO** diferentes tipos de errores que pueden ocurrir  
+**CUANDO** se capturan errores en un bloque try-catch  
+**ENTONCES** se pueden distinguir los tipos de error:
+
+```typescript
+import * as jwt from 'jsonwebtoken';
+
+try {
+  const payload = verifyToken(someToken);
+  console.log('Autenticado:', payload.email);
+} catch (error) {
+  if (error instanceof jwt.TokenExpiredError) {
+    // Token expirado - pedir re-login
+    console.log('Su sesión ha expirado. Por favor, inicie sesión nuevamente.');
+    console.log('Expiró en:', error.expiredAt);
+  } else if (error instanceof jwt.JsonWebTokenError) {
+    // Token inválido - posible manipulación
+    console.log('Token inválido. Acceso denegado.');
+  } else if (error instanceof Error) {
+    // Error de validación (token vacío, etc.)
+    console.log('Error de validación:', error.message);
+  }
+}
+```
+
+**Verificaciones:**
+- [ ] Los errores de `jsonwebtoken` se propagan correctamente sin ser envueltos
+- [ ] Los errores de validación propia usan clase `Error` estándar
+- [ ] Es posible distinguir entre token expirado vs token inválido
+- [ ] Los mensajes de error son claros y útiles para debugging
+
+---
+
+### CA-16: Compatibilidad con Fases Posteriores
+**DADO** que este módulo será usado en Fase 5 (Servicios) y Fase 7 (Middlewares)  
+**CUANDO** se diseña la interfaz pública del módulo  
+**ENTONCES**:
+- [ ] Las funciones son exportadas correctamente y pueden ser importadas desde otros archivos
+- [ ] La interfaz `JwtPayload` es exportada para uso en type annotations
+- [ ] Los errores pueden ser capturados y manejados en capas superiores
+- [ ] No existen dependencias circulares con otros módulos
+- [ ] El módulo es **stateless** (no mantiene estado interno)
+- [ ] Múltiples llamadas concurrentes a `generateToken` y `verifyToken` son seguras (thread-safe)
+
+**Ejemplo de uso en Fase 5 (AuthService):**
+```typescript
+// src/services/auth.service.ts (Fase 5 - futuro)
+import { generateToken } from '../utils/jwt';
+
+async function login(email: string, password: string) {
+  // ... validar credenciales ...
+  
+  // Usar módulo JWT
+  const token = generateToken(user.id, user.email);
+  
+  return { token, user };
+}
+```
+
+**Ejemplo de uso en Fase 7 (Middleware):**
+```typescript
+// src/infrastructure/middlewares/auth.middleware.ts (Fase 7 - futuro)
+import { verifyToken } from '../../utils/jwt';
+import * as jwt from 'jsonwebtoken';
+
+function authenticateToken(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader?.split(' ')[1]; // "Bearer TOKEN"
+  
+  try {
+    const payload = verifyToken(token);
+    req.userId = payload.userId;
+    req.email = payload.email;
+    next();
+  } catch (error) {
+    if (error instanceof jwt.TokenExpiredError) {
+      return res.status(401).json({ error: 'Token expired' });
+    }
+    return res.status(403).json({ error: 'Invalid token' });
+  }
+}
+```
+
+---
+
+### CA-17: Performance y Eficiencia
+**DADO** un escenario de alta concurrencia  
+**CUANDO** se generan y verifican tokens masivamente  
+**ENTONCES**:
+- [ ] `generateToken()` ejecuta en < 5ms en hardware moderno (sin I/O)
+- [ ] `verifyToken()` ejecuta en < 5ms en hardware moderno (sin I/O)
+- [ ] No existen memory leaks en ejecución prolongada
+- [ ] Las funciones son síncronas (no requieren `async/await`)
+- [ ] El módulo no realiza operaciones bloqueantes (I/O, network, timers)
+
+**Nota:** Las operaciones criptográficas de HS256 son extremadamente rápidas comparadas con bcrypt (que usa 10 rounds por diseño).
+
+---
+
+### CA-18: Seguridad y Mejores Prácticas
+**DADO** el contexto de un sistema de autenticación  
+**CUANDO** se implementa el módulo JWT  
+**ENTONCES** se siguen las mejores prácticas de seguridad:
+
+- [ ] ✅ **Algoritmo HS256**: Se usa algoritmo simétrico recomendado para firmas con clave secreta
+- [ ] ✅ **No hardcodear secretos**: `JWT_SECRET` siempre desde variables de entorno
+- [ ] ✅ **Payload mínimo**: Solo `userId` y `email`, NO datos sensibles
+- [ ] ✅ **Expiración obligatoria**: Todos los tokens tienen `exp` definido (15h)
+- [ ] ✅ **Verificación estricta**: No se aceptan tokens sin firma o con firma débil
+- [ ] ❌ **NO usar algoritmo "none"**: Librerías modernas lo deshabilitan por defecto
+- [ ] ❌ **NO incluir contraseñas en payload**: Payload es decodificable sin clave
+- [ ] ❌ **NO ignorar errores de verificación**: Siempre propagar errores hacia arriba
+- [ ] ✅ **Validaciones de entrada**: Prevenir inyecciones y valores vacíos
+- [ ] ✅ **Mensajes de error informativos**: Facilitan debugging sin exponer datos sensibles
+
+**Referencias de seguridad:**
+- OWASP JWT Cheat Sheet: https://cheatsheetseries.owasp.org/cheatsheets/JSON_Web_Token_for_Java_Cheat_Sheet.html
+- RFC 7519 (JWT Standard): https://datatracker.ietf.org/doc/html/rfc7519
+
+---
+ 
 ## Trazabilidad
 
-### Relación con Plan de Desarrollo
+### Referencias al Plan de Desarrollo
 
-| Tarea en PLAN_DESARROLLO.md | Estado | Cubierto en ONE_SPEC |
-|------------------------------|--------|----------------------|
-| **Fase 3: Módulo de Contraseñas** | ✅ Especificado | Este documento |
-| Tarea 3.1: Configurar bcrypt para hash | ✅ Especificado | Criterios 1, 2 |
-| - Instalar bcrypt y @types/bcrypt | ✅ Especificado | Criterio 1 |
-| - Crear utilidad src/utils/password.ts | ✅ Especificado | Criterio 2 |
-| - Implementar hashPassword() | ✅ Especificado | Criterio 3 |
-| - Implementar comparePassword() | ✅ Especificado | Criterio 4 |
+**Documento fuente:** [PLAN_DESARROLLO.md](PLAN_DESARROLLO.md)
+
+**Fase correspondiente:** Fase 4 - Módulo de JWT
+
+**Tareas específicas:**
+
+| Tarea | Descripción | Estado en ONE_SPEC |
+|-------|-------------|---------------------|
+| **4.1** | Configurar JWT | ✅ Cubierto en CA-1, CA-2, CA-13 |
+| **4.1.1** | Instalar `jsonwebtoken` y `@types/jsonwebtoken` | ✅ CA-1 (Instalación de dependencias) |
+| **4.1.2** | Crear archivo `src/utils/jwt.ts` | ✅ CA-2 (Creación del archivo) |
+| **4.2** | Implementar generación de tokens | ✅ Cubierto en CA-3 a CA-6 |
+| **4.2.1** | Crear función `generateToken(userId, email)` | ✅ CA-3 (Implementación básica) |
+| **4.2.2** | Configurar expiración de 15 horas (`expiresIn: '15h'`) | ✅ CA-5 (Expiración de 15 horas) |
+| **4.2.3** | Incluir payload: `{ userId, email }` | ✅ CA-3 (Payload en token) |
+| **4.3** | Implementar verificación de tokens | ✅ Cubierto en CA-7 a CA-10 |
+| **4.3.1** | Crear función `verifyToken(token)` | ✅ CA-7 (Verificación exitosa) |
+| **4.3.2** | Manejar errores de token expirado | ✅ CA-8 (Token expirado) |
+| **4.3.3** | Manejar errores de token inválido | ✅ CA-9 (Token inválido/manipulado) |
+
+---
 
 ### Dependencias con Otras Fases
 
-| Fase | Relación | Tipo de Dependencia |
-|------|----------|---------------------|
-| **Fase 1** ✅ | Configuración base de TypeScript y estructura | COMPLETADA (Prerrequisito) |
-| **Fase 2** ✅ | Supabase configurado para almacenar hashes | COMPLETADA (Prerrequisito) |
-| **Fase 4** ⏳ | JWT usará `comparePassword` para validar login | BLOQUEADA por Fase 3 |
-| **Fase 5** ⏳ | Servicios de auth usarán ambas funciones | BLOQUEADA por Fase 3 |
-| **Fase 6** ⏳ | Controladores invocarán servicios que usan password utils | BLOQUEADA por Fase 5 |
-| **Fase 8** ⏳ | Validaciones de complejidad de password se integrarán | INDEPENDIENTE (puede extender) |
+**Depende de (prerequisitos):**
 
-### Archivos Afectados
+| Fase | Descripción | Artefactos Requeridos | Estado |
+|------|-------------|-----------------------|--------|
+| **Fase 1.3** | Variables de entorno | `.env` configurado con estructura básica | ✅ Completado |
+| **Fase 1.1** | Configuración TypeScript | `tsconfig.json` con compilador configurado | ✅ Completado |
+| - | Librería dotenv | `dotenv` instalado y configurado en `index.ts` | ✅ Completado |
 
-| Archivo | Tipo de Cambio | Descripción |
-|---------|----------------|-------------|
-| `package.json` | MODIFICACIÓN | Agregar bcrypt y @types/bcrypt a dependencies |
-| `package-lock.json` | MODIFICACIÓN | Actualizado automáticamente por npm install |
-| `src/utils/` | CREACIÓN (CARPETA) | Nueva carpeta para utilidades |
-| `src/utils/password.ts` | CREACIÓN (ARCHIVO) | Implementación de hashPassword y comparePassword |
-| `test-password.ts` | CREACIÓN (ARCHIVO) | Script de testing manual temporal |
-| `README.md` | MODIFICACIÓN (OPCIONAL) | Documentar nuevo módulo |
+**Requerido por (dependientes):**
 
-### Puntos de Integración Futuros
+| Fase | Descripción | Uso del Módulo JWT | Impacto |
+|------|-------------|---------------------|---------|
+| **Fase 5.3** | Servicio de login | Llama a `generateToken()` después de validar credenciales | 🔴 Bloqueante |
+| **Fase 7.1** | Middleware de autenticación | Llama a `verifyToken()` en cada petición protegida | 🔴 Bloqueante |
+| **Fase 9.1** | Testing de flujo completo | Genera y verifica tokens en pruebas end-to-end | 🟡 Importante |
 
-**Fase 5 - Servicios de Autenticación:**
-```typescript
-// src/application/usecase/CreatePasswordUseCase.ts (FUTURO)
-import { hashPassword } from '../../utils/password';
-
-async execute(email: string, password: string) {
-  const user = await this.userRepository.findByEmail(email);
-  if (user.hasPassword) throw new Error('Password already exists');
-  
-  const hash = await hashPassword(password); // ← USO DEL MÓDULO
-  await this.userRepository.updatePassword(user.id, hash);
-}
-```
-
-**Fase 5 - Login:**
-```typescript
-// src/application/usecase/LoginUseCase.ts (FUTURO)
-import { comparePassword } from '../../utils/password';
-
-async execute(email: string, password: string) {
-  const user = await this.userRepository.findByEmail(email);
-  if (!user.hasPassword) throw new Error('No password set');
-  
-  const isValid = await comparePassword(password, user.passwordHash!); // ← USO
-  if (!isValid) throw new UnauthorizedError('Invalid credentials');
-  
-  return generateToken(user.id, user.email); // Fase 4
-}
-```
-
-### Conformidad con Arquitectura Hexagonal
-
-```
-┌───────────────────────────────────────────────────────────────┐
-│  CAPA UTILS (Independiente de capas)                          │
-│  ┌─────────────────────────────────────────────────────────┐  │
-│  │ password.ts ← FASE 3 IMPLEMENTA AQUÍ                    │  │
-│  │   - hashPassword()                                      │  │
-│  │   - comparePassword()                                   │  │
-│  │                                                         │  │
-│  │ ✅ Sin dependencias de Domain, App o Infrastructure     │  │
-│  │ ✅ Solo depende de bcrypt (librería externa)           │  │
-│  │ ✅ Reusable en cualquier capa                          │  │
-│  └─────────────────────────────────────────────────────────┘  │
-└───────────────────────────────────────────────────────────────┘
-             ▲                            ▲
-             │                            │
-    ┌────────┴────────┐         ┌────────┴─────────┐
-    │  APPLICATION    │         │  INFRASTRUCTURE  │
-    │  (Fase 5)       │         │  (Fase 6)        │
-    │  Use Cases      │         │  Controllers     │
-    └─────────────────┘         └──────────────────┘
-```
-
-**Ventajas de esta ubicación:**
-- ✅ No acopla lógica de negocio a detalles de hashing
-- ✅ Fácil de testear unitariamente
-- ✅ Puede ser reemplazada por otra implementación (e.g., Argon2) sin afectar otras capas
-- ✅ Respeta principios SOLID (Single Responsibility, Dependency Inversion)
+**Leyenda:**  
+🔴 Bloqueante = No se puede iniciar sin completar esta fase  
+🟡 Importante = Se puede iniciar pero no completar sin esta fase  
+🟢 Opcional = No afecta el progreso
 
 ---
 
-## 📋 Checklist de Implementación (Orden Sugerido)
+### Mapeo con Arquitectura Hexagonal
 
-### Paso 1: Instalación de Dependencias
-```bash
-cd C:\Users\Usuario\Documents\mcp-server\Loggin-Mcp
-npm install bcrypt@^5.1.1
-npm install --save-dev @types/bcrypt@^5.0.2
+**Ubicación en capas:**
+
 ```
-**Validar:** `npm list bcrypt` y `npm list @types/bcrypt`
-
----
-
-### Paso 2: Crear Estructura de Carpetas
-```bash
-mkdir src\utils
-```
-**Validar:** Carpeta `src/utils/` existe
-
----
-
-### Paso 3: Crear Archivo password.ts
-
-**Ruta:** `src/utils/password.ts`
-
-**Contenido completo:**
-
-```typescript
-/**
- * Password Utility Module
- * 
- * Proporciona funciones para hashing seguro y validación de contraseñas
- * usando bcrypt. Este módulo es independiente de capas y puede ser usado
- * en Application Layer (Use Cases) e Infrastructure Layer (Controllers).
- * 
- * @module utils/password
- */
-
-import * as bcrypt from 'bcrypt';
-
-/**
- * Número de rondas de salt para bcrypt.
- * Valor recomendado en 2026: 10
- * Mayor valor = más seguro pero más lento.
- * 
- * Performance aproximada con 10 rounds: ~100-150ms
- */
-const SALT_ROUNDS = 10;
-
-/**
- * Genera un hash seguro de una contraseña usando bcrypt.
- * 
- * El hash generado incluye el salt de forma automática y es único
- * para cada ejecución, incluso con la misma contraseña de entrada.
- * Esto previene ataques con rainbow tables.
- * 
- * @param password - Contraseña en texto plano a hashear (máximo 72 bytes UTF-8)
- * @returns Promise que resuelve al hash bcrypt de la contraseña (formato: $2b$10$...)
- * @throws {Error} Si la contraseña está vacía o es inválida
- * @throws {Error} Si bcrypt falla internamente
- * 
- * @example
- * ```typescript
- * const hash = await hashPassword("MiPassword123!");
- * // hash = "$2b$10$N9qo8uLOValidHash..."
- * 
- * // Cada ejecución produce hash diferente:
- * const hash1 = await hashPassword("same");
- * const hash2 = await hashPassword("same");
- * // hash1 !== hash2 (debido al salt único)
- * ```
- * 
- * @security
- * - NO loguear la contraseña en texto plano
- * - NO almacenar la contraseña original
- * - Bcrypt trunca automáticamente a 72 bytes
- */
-export async function hashPassword(password: string): Promise<string> {
-  // Validación: password no debe estar vacío
-  if (!password || password.trim().length === 0) {
-    throw new Error('Password cannot be empty');
-  }
-
-  try {
-    // bcrypt.hash() genera el salt automáticamente y lo incluye en el hash
-    // No es necesario llamar a genSalt() manualmente
-    const hash = await bcrypt.hash(password, SALT_ROUNDS);
-    return hash;
-  } catch (error) {
-    // Propagar error con contexto adicional
-    throw new Error(`Failed to hash password: ${(error as Error).message}`);
-  }
-}
-
-/**
- * Compara una contraseña en texto plano con su hash bcrypt almacenado.
- * 
- * Esta función es resistente a timing attacks gracias a la implementación
- * interna de bcrypt. Nunca implementar comparación manual de strings.
- * 
- * @param password - Contraseña en texto plano a verificar
- * @param hash - Hash bcrypt almacenado previamente (formato: $2b$10$...)
- * @returns Promise que resuelve a:
- *          - `true` si la contraseña coincide con el hash
- *          - `false` si la contraseña NO coincide o el hash es inválido
- * @throws {Error} Si los parámetros son nulos, undefined o vacíos
- * @throws {Error} Si bcrypt falla internamente
- * 
- * @example
- * ```typescript
- * // En proceso de login:
- * const storedHash = user.passwordHash;
- * const userInput = "password123";
- * 
- * const isValid = await comparePassword(userInput, storedHash);
- * 
- * if (isValid) {
- *   console.log("Login exitoso");
- *   // Generar JWT token...
- * } else {
- *   console.log("Credenciales inválidas");
- *   // Retornar 401 Unauthorized
- * }
- * ```
- * 
- * @security
- * - La comparación es case-sensitive
- * - No revelar en errores si el hash es inválido vs password incorrecta
- * - Tiempo de ejecución constante para prevenir timing attacks
- */
-export async function comparePassword(
-  password: string,
-  hash: string
-): Promise<boolean> {
-  // Validación: ambos parámetros deben existir
-  if (!password || password.trim().length === 0) {
-    throw new Error('Password cannot be empty');
-  }
-
-  if (!hash || hash.trim().length === 0) {
-    throw new Error('Hash cannot be empty');
-  }
-
-  try {
-    // bcrypt.compare() maneja internamente la extracción del salt del hash
-    // y realiza la comparación de forma segura
-    const isMatch = await bcrypt.compare(password, hash);
-    return isMatch;
-  } catch (error) {
-    // Si el hash es inválido, bcrypt lanzará error
-    // Por seguridad, no revelar detalles específicos del error
-    throw new Error(`Failed to compare password: ${(error as Error).message}`);
-  }
-}
-
-/**
- * Obtiene el número de salt rounds configurado.
- * 
- * Útil para debugging o logging de configuración.
- * 
- * @returns Número de rondas de salt (10 por defecto)
- * 
- * @example
- * ```typescript
- * console.log(`Salt rounds configuradas: ${getSaltRounds()}`);
- * // Output: Salt rounds configuradas: 10
- * ```
- */
-export function getSaltRounds(): number {
-  return SALT_ROUNDS;
-}
+📦 src/
+└── 🛠️ utils/           ← CAPA TRANSVERSAL (Utilities)
+    ├── password.ts     ← Fase 3 ✅
+    └── jwt.ts          ← Fase 4 (ESTE SPEC) 🎯
 ```
 
-**Validar:**
-- ✅ Archivo creado en `src/utils/password.ts`
-- ✅ Sin errores de TypeScript: `npx tsc --noEmit`
+**Análisis de responsabilidades:**
 
----
+| Aspecto | Clasificación | Justificación |
+|---------|---------------|---------------|
+| **Capa** | Utilities (Transversal) | No pertenece a Domain, Application ni Infrastructure específicamente |
+| **Acoplamiento** | Bajo | Solo depende de librerías externas (`jsonwebtoken`) y variables de entorno |
+| **Reutilización** | Alta | Usado en Application Layer (Use Cases) e Infrastructure Layer (Middlewares) |
+| **Testabilidad** | Alta | Funciones puras sin estado, fácil de mockear |
+| **Independencia** | Independiente de dominio | No conoce entidades User, repositorios ni casos de uso |
 
-### Paso 4: Crear Script de Testing
+**Flujo de uso esperado:**
 
-**Ruta:** `test-password.ts` (en raíz del proyecto)
-
-**Contenido completo:**
-
-```typescript
-/**
- * Script de Testing Manual - Password Module
- * 
- * Este script valida la funcionalidad básica del módulo de contraseñas.
- * En Fase 9 se reemplazará por tests automatizados con Jest.
- * 
- * Uso: npx ts-node test-password.ts
- */
-
-import { hashPassword, comparePassword, getSaltRounds } from './src/utils/password';
-
-async function testPasswordModule() {
-  console.log('🔒 ===============================================');
-  console.log('🧪 Testing Password Module - Fase 3');
-  console.log('🔒 ===============================================\n');
-
-  let testsPassed = 0;
-  let testsFailed = 0;
-
-  // Test 1: Configuración
-  console.log('📋 Test 1: Verificar configuración');
-  try {
-    const saltRounds = getSaltRounds();
-    console.log(`   Salt rounds: ${saltRounds}`);
-    if (saltRounds === 10) {
-      console.log('   ✅ PASS: Salt rounds correctamente configurado en 10\n');
-      testsPassed++;
-    } else {
-      console.log('   ❌ FAIL: Salt rounds debería ser 10\n');
-      testsFailed++;
-    }
-  } catch (error) {
-    console.log(`   ❌ FAIL: ${error}\n`);
-    testsFailed++;
-  }
-
-  // Test 2: Hash generation
-  console.log('📋 Test 2: Generar hash de contraseña');
-  try {
-    const password = 'TestPassword123!';
-    const hash1 = await hashPassword(password);
-    const hash2 = await hashPassword(password);
-    
-    console.log(`   Password: "${password}"`);
-    console.log(`   Hash 1: ${hash1}`);
-    console.log(`   Hash 2: ${hash2}`);
-    
-    if (hash1.startsWith('$2b$10$') && hash2.startsWith('$2b$10$') && hash1 !== hash2) {
-      console.log('   ✅ PASS: Hashes generados correctamente y son únicos\n');
-      testsPassed++;
-    } else {
-      console.log('   ❌ FAIL: Hashes inválidos o no únicos\n');
-      testsFailed++;
-    }
-  } catch (error) {
-    console.log(`   ❌ FAIL: ${error}\n`);
-    testsFailed++;
-  }
-
-  // Test 3: Correct password validation
-  console.log('📋 Test 3: Validar contraseña correcta');
-  try {
-    const password = 'CorrectPassword456!';
-    const hash = await hashPassword(password);
-    const isValid = await comparePassword(password, hash);
-    
-    console.log(`   Password: "${password}"`);
-    console.log(`   Match result: ${isValid}`);
-    
-    if (isValid === true) {
-      console.log('   ✅ PASS: Contraseña correcta validada exitosamente\n');
-      testsPassed++;
-    } else {
-      console.log('   ❌ FAIL: Contraseña correcta no fue reconocida\n');
-      testsFailed++;
-    }
-  } catch (error) {
-    console.log(`   ❌ FAIL: ${error}\n`);
-    testsFailed++;
-  }
-
-  // Test 4: Incorrect password validation
-  console.log('📋 Test 4: Rechazar contraseña incorrecta');
-  try {
-    const correctPassword = 'CorrectPassword789!';
-    const wrongPassword = 'WrongPassword999!';
-    const hash = await hashPassword(correctPassword);
-    const isValid = await comparePassword(wrongPassword, hash);
-    
-    console.log(`   Correct password: "${correctPassword}"`);
-    console.log(`   Wrong password: "${wrongPassword}"`);
-    console.log(`   Match result: ${isValid}`);
-    
-    if (isValid === false) {
-      console.log('   ✅ PASS: Contraseña incorrecta rechazada correctamente\n');
-      testsPassed++;
-    } else {
-      console.log('   ❌ FAIL: Contraseña incorrecta fue aceptada\n');
-      testsFailed++;
-    }
-  } catch (error) {
-    console.log(`   ❌ FAIL: ${error}\n`);
-    testsFailed++;
-  }
-
-  // Test 5: Case sensitivity
-  console.log('📋 Test 5: Verificar case sensitivity');
-  try {
-    const password = 'Password123!';
-    const hash = await hashPassword(password);
-    const isValid = await comparePassword('password123!', hash); // lowercase
-    
-    console.log(`   Original: "${password}"`);
-    console.log(`   Lowercase: "password123!"`);
-    console.log(`   Match result: ${isValid}`);
-    
-    if (isValid === false) {
-      console.log('   ✅ PASS: Case sensitivity funciona correctamente\n');
-      testsPassed++;
-    } else {
-      console.log('   ❌ FAIL: No distingue mayúsculas de minúsculas\n');
-      testsFailed++;
-    }
-  } catch (error) {
-    console.log(`   ❌ FAIL: ${error}\n`);
-    testsFailed++;
-  }
-
-  // Test 6: Empty password validation (hashPassword)
-  console.log('📋 Test 6: Validar rechazo de contraseña vacía en hash');
-  try {
-    await hashPassword('');
-    console.log('   ❌ FAIL: Debería lanzar error para contraseña vacía\n');
-    testsFailed++;
-  } catch (error) {
-    console.log(`   Error esperado: ${(error as Error).message}`);
-    console.log('   ✅ PASS: Error lanzado correctamente para contraseña vacía\n');
-    testsPassed++;
-  }
-
-  // Test 7: Empty password validation (comparePassword)
-  console.log('📋 Test 7: Validar rechazo de contraseña vacía en compare');
-  try {
-    const hash = await hashPassword('ValidPassword');
-    await comparePassword('', hash);
-    console.log('   ❌ FAIL: Debería lanzar error para contraseña vacía\n');
-    testsFailed++;
-  } catch (error) {
-    console.log(`   Error esperado: ${(error as Error).message}`);
-    console.log('   ✅ PASS: Error lanzado correctamente para contraseña vacía\n');
-    testsPassed++;
-  }
-
-  // Test 8: Invalid hash handling
-  console.log('📋 Test 8: Validar manejo de hash inválido');
-  try {
-    await comparePassword('SomePassword', 'invalid-hash-format');
-    console.log('   ❌ FAIL: Debería lanzar error para hash inválido\n');
-    testsFailed++;
-  } catch (error) {
-    console.log(`   Error esperado: ${(error as Error).message}`);
-    console.log('   ✅ PASS: Error lanzado correctamente para hash inválido\n');
-    testsPassed++;
-  }
-
-  // Test 9: Performance check
-  console.log('📋 Test 9: Verificar performance de hashing');
-  try {
-    const start = Date.now();
-    await hashPassword('PerformanceTest123!');
-    const duration = Date.now() - start;
-    
-    console.log(`   Tiempo de ejecución: ${duration}ms`);
-    
-    if (duration < 300) {
-      console.log('   ✅ PASS: Performance aceptable (< 300ms)\n');
-      testsPassed++;
-    } else {
-      console.log('   ⚠️  WARNING: Performance lenta (> 300ms) - puede ser normal en hardware antiguo\n');
-      testsPassed++; // No falla el test, solo advertencia
-    }
-  } catch (error) {
-    console.log(`   ❌ FAIL: ${error}\n`);
-    testsFailed++;
-  }
-
-  // Resumen final
-  console.log('🔒 ===============================================');
-  console.log('📊 RESUMEN DE TESTS');
-  console.log('🔒 ===============================================');
-  console.log(`✅ Tests pasados: ${testsPassed}`);
-  console.log(`❌ Tests fallidos: ${testsFailed}`);
-  console.log(`📈 Total: ${testsPassed + testsFailed}`);
-  
-  if (testsFailed === 0) {
-    console.log('\n🎉 ¡TODOS LOS TESTS PASARON! Password Module listo para Fase 4.\n');
-  } else {
-    console.log('\n⚠️  ALGUNOS TESTS FALLARON. Revisar implementación.\n');
-    process.exit(1);
-  }
-}
-
-// Ejecutar tests
-testPasswordModule().catch((error) => {
-  console.error('❌ Error fatal en tests:', error);
-  process.exit(1);
-});
 ```
-
-**Validar:**
-- ✅ Archivo creado en raíz: `test-password.ts`
-- ✅ Sin errores de TypeScript: `npx tsc --noEmit`
-
----
-
-### Paso 5: Ejecutar Tests
-
-```bash
-npx ts-node test-password.ts
-```
-
-**Output esperado:**
-```
-🔒 ===============================================
-🧪 Testing Password Module - Fase 3
-🔒 ===============================================
-
-📋 Test 1: Verificar configuración
-   Salt rounds: 10
-   ✅ PASS: Salt rounds correctamente configurado en 10
-
-📋 Test 2: Generar hash de contraseña
-   Password: "TestPassword123!"
-   Hash 1: $2b$10$...
-   Hash 2: $2b$10$...
-   ✅ PASS: Hashes generados correctamente y son únicos
-
-[... más tests ...]
-
-🔒 ===============================================
-📊 RESUMEN DE TESTS
-🔒 ===============================================
-✅ Tests pasados: 9
-❌ Tests fallidos: 0
-📈 Total: 9
-
-🎉 ¡TODOS LOS TESTS PASARON! Password Module listo para Fase 4.
-```
-
-**Validar:**
-- ✅ Todos los tests pasan
-- ✅ Sin errores de ejecución
-- ✅ Hashes generados en formato correcto
-
----
-
-### Paso 6: Validar Compilación TypeScript
-
-```bash
-npx tsc --noEmit
-```
-
-**Validar:**
-- ✅ Sin errores de tipos
-- ✅ Sin warnings de strict mode
-
----
-
-### Paso 7: (OPCIONAL) Actualizar README.md
-
-Agregar sección documentando el nuevo módulo:
-
-```markdown
-## 🔒 Módulo de Contraseñas (Fase 3) ✅
-
-Sistema de hashing seguro de contraseñas usando bcrypt.
-
-### Funciones disponibles
-
-- **`hashPassword(password: string): Promise<string>`**  
-  Genera hash bcrypt con salt único (10 rounds)
-
-- **`comparePassword(password: string, hash: string): Promise<boolean>`**  
-  Valida si una contraseña coincide con su hash
-
-### Ejemplo de uso
-
-\`\`\`typescript
-import { hashPassword, comparePassword } from './src/utils/password';
-
-// Al crear contraseña por primera vez
-const userInput = "MiPassword123!";
-const hash = await hashPassword(userInput);
-await userRepository.updatePassword(userId, hash);
-
-// Al hacer login
-const storedHash = user.passwordHash;
-const isValid = await comparePassword(userInput, storedHash);
-
-if (isValid) {
-  // Generar JWT y retornar
-} else {
-  // Retornar 401 Unauthorized
-}
-\`\`\`
-
-### Seguridad
-
-- ✅ Hashes bcrypt con salt único por contraseña
-- ✅ 10 salt rounds (balance seguridad/performance)
-- ✅ Resistente a timing attacks
-- ✅ Resistente a rainbow tables
-- ✅ No almacena contraseñas en texto plano
+[HTTP Request con credenciales]
+         │
+         ▼
+┌────────────────────────┐
+│ Infrastructure Layer   │
+│ AuthController.login() │◄──────────┐
+└───────────┬────────────┘           │
+            │                        │
+            ▼                        │
+┌────────────────────────┐           │
+│ Application Layer      │           │
+│ LoginUseCase.execute() │           │
+└───────────┬────────────┘           │
+            │                        │
+            ▼                        │
+┌────────────────────────┐           │
+│ Infrastructure Layer   │           │
+│ SupabaseUserRepository │           │
+│ (validar credenciales) │           │
+└───────────┬────────────┘           │
+            │                        │
+    [Credenciales válidas]           │
+            │                        │
+            ▼                        │
+┌────────────────────────┐           │
+│ 🛠️ UTILITIES (JWT)    │           │
+│ generateToken()        │───────────┘
+└────────────────────────┘
+            │
+            ▼
+    [Token JWT retornado]
+            │
+            ▼
+   [Respuesta HTTP 200]
 ```
 
 ---
 
-### Paso 8: Commit de Cambios
+### Checklist de Implementación (Resumen)
 
-```bash
-git add .
-git commit -m "feat(auth): implementar módulo de contraseñas con bcrypt - Fase 3
+**Pre-requisitos:**
+- [x] Fase 1 completada (Configuración inicial del proyecto)
+- [x] Variables de entorno configuradas (`.env` con estructura)
+- [x] TypeScript compilando sin errores
 
-- Instalar bcrypt ^5.1.1 y @types/bcrypt ^5.0.2
-- Crear utils/password.ts con hashPassword y comparePassword
-- Configurar 10 salt rounds para balance seguridad/performance
-- Agregar validaciones de input y manejo de errores
-- Crear test-password.ts con 9 tests de validación
-- Documentar con JSDoc completo y ejemplos de uso
+**Tareas de implementación:**
+- [ ] Instalar dependencias: `npm install jsonwebtoken` y `npm install --save-dev @types/jsonwebtoken`
+- [ ] Crear archivo `src/utils/jwt.ts` con estructura básica
+- [ ] Definir interfaz `JwtPayload` con `userId` y `email`
+- [ ] Implementar función `generateToken()` con:
+  - [ ] Validación de parámetros de entrada
+  - [ ] Validación de `JWT_SECRET` (existencia y longitud)
+  - [ ] Generación de token con `jwt.sign()`
+  - [ ] Configuración de expiración: `expiresIn: '15h'`
+  - [ ] Documentación JSDoc completa
+- [ ] Implementar función `verifyToken()` con:
+  - [ ] Validación de token no vacío
+  - [ ] Verificación con `jwt.verify()`
+  - [ ] Manejo de `TokenExpiredError`
+  - [ ] Manejo de `JsonWebTokenError`
+  - [ ] Documentación JSDoc completa
+- [ ] Agregar `JWT_SECRET` a `.env.example` con comentarios
+- [ ] Configurar `JWT_SECRET` en `.env` local (mínimo 32 caracteres, recomendado 64)
+- [ ] Ejecutar `npm run build` para verificar compilación TypeScript
+- [ ] Realizar tests manuales (CA-11):
+  - [ ] Test de ciclo completo exitoso
+  - [ ] Test de token expirado
+  - [ ] Test de token manipulado
+  - [ ] Test de JWT_SECRET incorrecto
+  - [ ] Test de validaciones de entrada
+- [ ] Verificar todos los criterios de aceptación (CA-1 a CA-18)
+- [ ] Commit con mensaje descriptivo: `feat: implement JWT module for authentication (Phase 4)`
 
-Implementa: PLAN_DESARROLLO.md Fase 3
-Tests: 9/9 passed"
-```
-
----
-
-### Paso 9: Verificación Final
-
-**Checklist de validación:**
-
-- [ ] `package.json` contiene `bcrypt: ^5.1.1`
-- [ ] `package.json` contiene `@types/bcrypt: ^5.0.2` en devDependencies
-- [ ] Carpeta `src/utils/` existe
-- [ ] Archivo `src/utils/password.ts` existe y compila sin errores
-- [ ] Función `hashPassword()` implementada con JSDoc
-- [ ] Función `comparePassword()` implementada con JSDoc
-- [ ] Función `getSaltRounds()` implementada
-- [ ] SALT_ROUNDS configurado en 10
-- [ ] Archivo `test-password.ts` creado y ejecuta exitosamente
-- [ ] Todos los tests (9/9) pasan
-- [ ] `npx tsc --noEmit` sin errores
-- [ ] README.md actualizado (opcional)
-- [ ] Cambios commiteados a Git
-
----
-
-## 📚 Referencias y Recursos
-
-### Documentación Oficial
-
-- **Bcrypt NPM:** https://www.npmjs.com/package/bcrypt
-- **Bcrypt GitHub:** https://github.com/kelektiv/node.bcrypt.js
-- **OWASP Password Storage:** https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html
-
-### Artículos Relevantes
-
-- "How to safely store a password" - OWASP Foundation
-- "bcrypt vs Argon2 in 2026" - Security Blog
-- "Timing attacks explained" - Web Security Academy
-
-### Decisiones de Diseño
-
-**¿Por qué bcrypt y no Argon2?**
-- Bcrypt es más maduro y ampliamente adoptado (desde 1999)
-- Argon2 es más moderno pero menos compatible
-- Para este proyecto, bcrypt es suficiente (recomendado por OWASP 2026)
-- Arquitectura permite cambiar a Argon2 en futuro sin afectar otras capas
-
-**¿Por qué 10 salt rounds?**
-- OWASP recomienda mínimo 10 rounds en 2026
-- 10 rounds = ~100-150ms en hardware moderno
-- Balance entre seguridad y UX (no hacer esperar mucho al usuario)
-- Puede incrementarse a 12 rounds en futuro si se requiere más seguridad
-
-**¿Por qué en src/utils/ y no en domain/?**
-- Hashing es un detalle de implementación, no lógica de negocio
-- Domain debe ser agnóstico a bcrypt (Dependency Inversion)
-- utils/ permite reutilización en múltiples capas
-- Facilita testing y reemplazo de implementación
+**Post-implementación:**
+- [ ] Documentar uso del módulo en README (opcional, puede hacerse en Fase 9)
+- [ ] Preparar integración con Fase 5 (Servicios de autenticación)
+- [ ] Preparar integración con Fase 7 (Middlewares de protección)
 
 ---
 
-## ⚠️ Consideraciones de Seguridad
+### Estimación de Tiempo
 
-### Vulnerabilidades Prevenidas
+**Tiempo estimado de implementación:** 2-3 horas
 
-| Ataque | Cómo se Previene |
-|--------|------------------|
-| **Rainbow Tables** | Salt único por contraseña generado automáticamente |
-| **Timing Attacks** | bcrypt.compare() tiene tiempo constante de ejecución |
-| **Brute Force** | 10 salt rounds hace el hashing intencionalmente lento |
-| **Password Exposure** | No se loguea ni se retorna contraseñas originales |
-| **Hash Cracking** | Bcrypt es computacionalmente costoso de cracker |
+**Desglose por tarea:**
+| Tarea | Tiempo estimado | Complejidad |
+|-------|-----------------|-------------|
+| Instalación de dependencias | 5 minutos | Baja |
+| Creación de archivo y estructura | 10 minutos | Baja |
+| Implementación de `generateToken()` | 45 minutos | Media |
+| Implementación de `verifyToken()` | 45 minutos | Media |
+| Documentación JSDoc | 30 minutos | Baja |
+| Configuración de variables de entorno | 10 minutos | Baja |
+| Testing manual | 30 minutos | Media |
+| Ajustes y refinamiento | 15 minutos | Baja |
 
-### Mejores Prácticas Aplicadas
-
-✅ **No reinventar la rueda:** Usar librería probada (bcrypt) en lugar de implementación custom  
-✅ **Salt automático:** No gestionar salts manualmente  
-✅ **Async operations:** Operaciones CPU-intensive no bloquean el event loop  
-✅ **Error handling:** No revelar información sensible en mensajes de error  
-✅ **Validación de input:** Prevenir valores nulos o vacíos  
-✅ **Documentación:** Explicar consideraciones de seguridad en JSDoc  
-
-### Futuras Mejoras de Seguridad (Post Fase 3)
-
-- **Fase 8:** Implementar políticas de complejidad (mínimo 8 chars, mayúsculas, números, símbolos)
-- **Fase 10:** Agregar pepper en variable de entorno para capa adicional
-- **Futuro:** Rate limiting en intentos de login (prevenir brute force a nivel HTTP)
-- **Futuro:** Monitoreo de intentos fallidos y lockout de cuentas
-- **Futuro:** Rotación periódica de contraseñas (opcional, controversial en 2026)
+**Factores que pueden aumentar el tiempo:**
+- Depuración de errores de TypeScript
+- Familiarización con la librería `jsonwebtoken` si no se ha usado antes
+- Ajustes en validaciones según feedback de testing
 
 ---
 
-## 🎯 Criterio de Éxito Global
+### Criterios de Definición de Completado (Definition of Done)
 
-**Fase 3 se considera COMPLETADA cuando:**
+Esta fase se considera **COMPLETADA** cuando:
 
-1. ✅ Todas las dependencias están instaladas sin errores
-2. ✅ Archivo `src/utils/password.ts` existe y compila
-3. ✅ Ambas funciones (`hashPassword`, `comparePassword`) están implementadas
-4. ✅ Script de testing `test-password.ts` ejecuta y pasa 9/9 tests
-5. ✅ Código cumple con TypeScript strict mode
-6. ✅ Documentación JSDoc completa en todas las funciones
-7. ✅ Cambios commiteados a Git con mensaje descriptivo
-8. ✅ README.md actualizado (opcional pero recomendado)
+✅ **Código:**
+- [ ] Archivo `src/utils/jwt.ts` existe y compila sin errores
+- [ ] Ambas funciones (`generateToken`, `verifyToken`) están implementadas
+- [ ] Todas las validaciones de entrada están en su lugar
+- [ ] Manejo de errores completo y diferenciado
 
-**Tiempo estimado de implementación:** 1-2 horas
+✅ **Testing:**
+- [ ] Todos los tests manuales de CA-11 pasan exitosamente
+- [ ] Token generado puede ser verificado correctamente
+- [ ] Tokens expirados son rechazados
+- [ ] Tokens manipulados son detectados
 
-**Bloqueadores resueltos para Fase 4 y 5:**
-- ✅ Servicios de autenticación pueden usar `hashPassword` para crear passwords
-- ✅ Servicios de login pueden usar `comparePassword` para validar credenciales
-- ✅ No hay dependencias pendientes para continuar con JWT (Fase 4)
+✅ **Documentación:**
+- [ ] JSDoc completo en todas las funciones públicas
+- [ ] Comentarios inline en lógica compleja
+- [ ] `.env.example` actualizado con `JWT_SECRET`
 
----
+✅ **Integración:**
+- [ ] Variables de entorno configuradas localmente
+- [ ] Módulo puede ser importado desde otros archivos sin errores
+- [ ] No existen dependencias circulares
 
-## 📞 Soporte y Troubleshooting
+✅ **Calidad:**
+- [ ] Código sigue convenciones de TypeScript del proyecto
+- [ ] Estilo consistente con otros módulos (`password.ts`)
+- [ ] No existen warnings de TypeScript ni ESLint
+- [ ] Commit realizado con mensaje descriptivo
 
-### Problemas Comunes y Soluciones
-
-**Error: `bcrypt` no compila en Windows**
-```bash
-# Solución: Instalar build tools de Windows
-npm install --global windows-build-tools
-npm rebuild bcrypt
-```
-
-**Error: `Cannot find module 'bcrypt'`**
-```bash
-# Solución: Reinstalar dependencias
-rm -rf node_modules package-lock.json
-npm install
-```
-
-**Error: `TypeError: bcrypt.hash is not a function`**
-```typescript
-// Problema: Import incorrecto
-import bcrypt from 'bcrypt'; // ❌
-
-// Solución: Usar * as
-import * as bcrypt from 'bcrypt'; // ✅
-```
-
-**Performance muy lenta (> 500ms)**
-```typescript
-// Problema: Salt rounds muy alto
-const SALT_ROUNDS = 15; // ❌ Muy lento
-
-// Solución: Reducir a 10
-const SALT_ROUNDS = 10; // ✅ Balance óptimo
-```
-
-**Tests fallan: "Hash format inválido"**
-```typescript
-// Verificar que bcrypt está instalado correctamente
-const bcrypt = require('bcrypt');
-console.log(bcrypt.getRounds('$2b$10$...')); // Debe retornar 10
-```
+✅ **Validación:**
+- [ ] Al menos un revisor ha validado el código (si aplica)
+- [ ] Todos los criterios de aceptación (CA-1 a CA-18) han sido verificados
+- [ ] Se puede proceder a Fase 5 sin blockers
 
 ---
 
-**FIN DEL ONE_SPEC - FASE 3: MÓDULO DE CONTRASEÑAS**
+**Fin de ONE SPEC - Fase 4: Módulo de JWT**
 
----
-
-**Próximos Pasos:** Una vez completada Fase 3, proceder con:
-- **Fase 4:** Módulo de JWT (jsonwebtoken, generación y verificación de tokens)
-- **Fase 5:** Servicios de Autenticación (integración de password.ts con casos de uso)
+**Próxima fase:** Fase 5 - Servicios de Autenticación (requiere este módulo completado)
