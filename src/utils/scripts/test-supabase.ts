@@ -1,5 +1,5 @@
 // test-supabase.ts (temporal, eliminar después)
-import { SupabaseUserRepositoryAdapter } from './src/infrastructure/repository/adapter/SupabaseUserRepositoryAdapter';
+import { SupabaseUserRepositoryAdapter } from '../../infrastructure/repository/adapter/SupabaseUserRepositoryAdapter';
 
 async function testConnection() {
   console.log('🔍 Testing Supabase connection...\n');

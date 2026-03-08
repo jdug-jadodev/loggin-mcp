@@ -3,7 +3,7 @@
  */
 
 import 'dotenv/config';
-import { generateToken, verifyToken } from './src/utils/jwt';
+import { generateToken, verifyToken } from '../jwt';
 
 console.log('🔐 Testing JWT Module - Phase 4\n');
 

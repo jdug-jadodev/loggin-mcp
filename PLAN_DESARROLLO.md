@@ -119,6 +119,8 @@ Microservicio de autenticación con Node.js + Express + TypeScript que usa JWT y
 - [ ] Registrar rutas en `src/index.ts`
 
 ---
+###########################################################
+FALTA POR EJECUCION HASTA QUE SE TERMINE EL NUEVO PLAN
 
 ## Fase 7: Middlewares de Protección
 

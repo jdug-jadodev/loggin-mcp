@@ -10,7 +10,7 @@
 
 import 'dotenv/config';
 import * as jwt from 'jsonwebtoken';
-import { generateToken, verifyToken } from './src/utils/jwt';
+import { generateToken, verifyToken } from '../jwt';
 
 console.log('='.repeat(60));
 console.log('PRUEBAS MANUALES DEL MÓDULO JWT - FASE 4');

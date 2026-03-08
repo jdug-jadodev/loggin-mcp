@@ -4,7 +4,7 @@
  * Uso: npx ts-node test-password.ts
  */
 
-import { hashPassword, comparePassword, getSaltRounds } from './src/utils/password';
+import { hashPassword, comparePassword, getSaltRounds } from '../password';
 
 async function testPasswordModule() {
   console.log('🔒 ===============================================');
