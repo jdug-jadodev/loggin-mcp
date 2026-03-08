@@ -1,746 +1,957 @@
-# One Spec (Root Spec)
+# One Spec (Root Spec) - Fase 1: Middleware de Autenticación JWT
 
-**Feature:** Middleware de Autenticación JWT (FASE 1)  
-**Versión:** 1.0.0  
-**Fecha:** 7 de Marzo de 2026  
-**Estado:** Especificación  
+**Versión:** 1.0  
+**Fecha:** 8 de Marzo de 2026  
+**Fase:** FASE 1 - Middleware de Autenticación JWT (Protección de Rutas)  
+**Responsable:** Equipo de Desarrollo
 
 ---
 
 ## Objetivo
 
-Implementar un sistema de autenticación basado en JWT que proteja las rutas de la API mediante middleware, asegurando que solo usuarios autenticados con tokens válidos puedan acceder a recursos protegidos.
+Implementar un sistema robusto de autenticación basado en JWT para proteger las rutas de la API que requieren autorización, garantizando que solo usuarios autenticados con tokens válidos puedan acceder a endpoints protegidos.
 
 ### Objetivos Específicos:
-
-1. **Validación de Tokens JWT**: Crear middleware que valide tokens JWT en cada petición a rutas protegidas
-2. **Extensión de Request**: Permitir que las rutas accedan a la información del usuario autenticado
-3. **Manejo de Errores**: Proporcionar respuestas HTTP claras para casos de autenticación fallida
-4. **Reutilización**: Crear componentes reutilizables que puedan aplicarse a cualquier ruta
+1. **Validación de Tokens JWT:** Verificar la autenticidad, integridad y vigencia de tokens en cada request protegido
+2. **Extensión de Request:** Enriquecer el objeto Request de Express con información del usuario autenticado
+3. **Manejo de Errores:** Proporcionar respuestas claras y específicas para diferentes escenarios de fallo
+4. **Seguridad:** Implementar validaciones estrictas siguiendo mejores prácticas de seguridad JWT
 
 ---
 
 ## Alcance / No alcance
 
-### ✅ Dentro del Alcance (SÍ se incluye):
+### ✅ Dentro del Alcance (Fase 1)
 
-1. **Middleware de Autenticación JWT**
-   - Extracción del token desde header `Authorization: Bearer <token>`
-   - Validación del token usando la utilidad existente `verifyToken()`
-   - Agregación de `userId` y `email` al objeto `Request`
-   - Manejo de tokens inválidos, expirados o ausentes
+#### 1. Middleware de Autenticación JWT
+- Extracción de token desde header `Authorization: Bearer <token>`
+- Validación de firma JWT usando `JWT_SECRET`
+- Verificación de expiración de tokens
+- Inyección de datos del usuario (`userId`, `email`) en el objeto Request
+- Manejo de errores con códigos HTTP apropiados (401)
 
-2. **Definición de Tipos TypeScript**
-   - Extensión de la interfaz `Request` de Express
-   - Declaración de tipos para propiedades de usuario autenticado
+#### 2. Sistema de Excepciones
+- Clase `UnauthorizedError`: Token ausente o sesión no iniciada
+- Clase `TokenExpiredError`: Token expirado temporalmente
+- Clase `InvalidTokenError`: Token con firma inválida o formato corrupto
+- Todas extienden de `AuthError` existente
 
-3. **Excepciones de Autenticación**
-   - `UnauthorizedError`: Token ausente o formato inválido
-   - `TokenExpiredError`: Token expirado
-   - `InvalidTokenError`: Token malformado o firma inválida
+#### 3. Soporte de TypeScript
+- Archivo de definición de tipos `express.d.ts`
+- Extensión de interfaz `Request` con propiedades `userId`, `email`, `userRole?`
+- Type-safety en todo el middleware
 
-4. **Respuestas HTTP Estandarizadas**
-   - Código 401 Unauthorized para errores de autenticación
-   - Mensajes descriptivos en formato JSON
-   - Timestamps de error
+#### 4. Documentación
+- Comentarios JSDoc en funciones y clases
+- Mensajes de error descriptivos y accionables
 
-### ❌ Fuera del Alcance (NO se incluye):
+### ❌ Fuera del Alcance (Otras Fases)
 
-1. **Autorización basada en roles** - Corresponde a Fase 2
-2. **Generación de tokens** - Ya implementado en `src/utils/jwt.ts`
-3. **Refresh tokens o renovación** - Funcionalidad futura
-4. **Rate limiting o throttling** - Seguridad adicional futura
-5. **Logout o revocación de tokens** - Funcionalidad futura
-6. **Autenticación de terceros (OAuth)** - No requerido
-7. **Tests unitarios** - Opcional, no crítico para MVP
-8. **Registro de auditoría** - Funcionalidad futura
+- **Sistema de Roles y Autorización (Fase 2):** Middleware de admin, validación de permisos
+- **Generación de Tokens:** Ya implementado en `src/utils/jwt.ts`
+- **Refresh Tokens:** Sistema de renovación automática de tokens
+- **Rate Limiting:** Control de tasa de requests por IP
+- **2FA/MFA:** Autenticación de dos factores
+- **OAuth/SSO:** Integración con proveedores externos
+- **Blacklist de Tokens:** Invalidación manual de tokens antes de expiración
+- **Tests Unitarios:** Opcional en esta fase, documentados pero no obligatorios
 
 ---
 
 ## Definiciones (lenguaje de dominio)
 
-### Entidades y Conceptos:
+### Términos del Dominio de Autenticación
 
-**JWT (JSON Web Token)**
-- Token de autenticación firmado digitalmente
-- Contiene payload con `userId` y `email`
-- Tiene expiración de 15 horas (según configuración actual)
-- Se genera al hacer login exitoso
+#### **JWT (JSON Web Token)**
+Token criptográfico compuesto de tres partes (header.payload.signature) que contiene información del usuario autenticado. En este sistema:
+- **Payload:** `{ userId, email, iat, exp }`
+- **Expiración:** 15 horas (definido en `jwt.ts`)
+- **Algoritmo:** HS256 (HMAC-SHA256)
 
-**Middleware de Autenticación**
-- Función que intercepta requests HTTP antes de llegar al controlador
-- Valida la presencia y validez del token JWT
-- Enriquece el request con información del usuario
-- Bloquea acceso si el token es inválido
+#### **Middleware**
+Función de Express que se ejecuta entre el request y el controlador, permitiendo validar, transformar o rechazar requests antes de llegar a la lógica de negocio.
 
-**Bearer Token**
-- Esquema de autenticación HTTP donde el token se envía en el header
-- Formato: `Authorization: Bearer <token>`
-- El token va precedido por la palabra "Bearer" y un espacio
+#### **Request Extendido**
+Objeto Request de Express enriquecido con propiedades adicionales:
+- `req.userId`: UUID del usuario autenticado
+- `req.email`: Email del usuario autenticado
+- `req.userRole`: Rol del usuario (para Fase 2)
 
-**Request Extendido**
-- Objeto `Request` de Express con propiedades adicionales
-- Incluye `userId`, `email` del usuario autenticado
-- Disponible en todos los controladores que usen el middleware
+#### **Bearer Token**
+Esquema de autenticación HTTP donde el token se envía en el header:
+```
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
 
-**Usuario Autenticado**
-- Usuario que ha iniciado sesión exitosamente
-- Posee un token JWT válido y no expirado
-- Corresponde a un registro en la tabla `users` de Supabase
+#### **Token Expiration (exp)**
+Claim estándar JWT que indica el timestamp Unix después del cual el token no debe ser aceptado.
 
-### Estados del Token:
+#### **Token Verification**
+Proceso de validación que verifica:
+1. Firma criptográfica (integridad)
+2. Estructura válida (formato)
+3. No expiración (vigencia)
+4. Claims requeridos presentes
 
-1. **Válido**: Token presente, bien formado, no expirado, firma correcta
-2. **Ausente**: No se envió header Authorization
-3. **Malformado**: Header presente pero no sigue formato "Bearer <token>"
-4. **Inválido**: Token con firma incorrecta o payload corrupto
-5. **Expirado**: Token válido pero más allá de su tiempo de expiración
+### Entidades del Sistema
+
+#### **AuthError**
+Clase base para errores de autenticación/autorización que incluye:
+- `message`: Descripción del error
+- `timestamp`: ISO string de cuándo ocurrió
+- `context`: Metadata adicional opcional
+
+#### **UnauthorizedError**
+Error 401 cuando el usuario no ha proporcionado credenciales válidas.
+
+#### **TokenExpiredError**
+Error 401 cuando el token proporcionado ha caducado.
+
+#### **InvalidTokenError**
+Error 401 cuando el token tiene firma inválida o está corrupto.
 
 ---
 
 ## Principios / Reglas no negociables
 
-### Seguridad:
+### 1. Seguridad First
 
-1. **JWT_SECRET Obligatorio**
-   - El servidor NO debe iniciar sin JWT_SECRET configurado
-   - Debe tener mínimo 32 caracteres (validación ya existe en jwt.ts)
+#### 1.1 Validación de JWT_SECRET
+- **REGLA CRÍTICA:** El `JWT_SECRET` DEBE tener mínimo 64 caracteres en producción
+- **NUNCA** usar valores por defecto o secrets débiles
+- **SIEMPRE** verificar que `JWT_SECRET` existe antes de validar tokens
+- **RECHAZAR** requests si el secret no está configurado
 
-2. **Validación en Cada Request**
-   - El middleware DEBE verificar el token en CADA petición a rutas protegidas
-   - No cachear estados de autenticación en servidor (stateless)
+#### 1.2 Validación Estricta de Tokens
+- **NUNCA** aceptar tokens sin firma
+- **SIEMPRE** verificar expiración antes de procesar
+- **RECHAZAR** tokens con estructura inválida inmediatamente
+- **NO** incluir el token completo en logs (solo primeros 10 caracteres)
 
-3. **No Exponer Información Sensible**
-   - Los mensajes de error NO deben revelar detalles del sistema
-   - No incluir stack traces en respuestas de producción
-   - No loguear tokens completos (solo primeros/últimos caracteres para debug)
+#### 1.3 Headers de Seguridad
+- **OBLIGATORIO:** Aceptar SOLO header `Authorization` con esquema `Bearer`
+- **RECHAZAR:** Tokens en query params, cookies o body (antipatrón)
+- **CASE-SENSITIVE:** El header debe ser exactamente "Bearer" (no "bearer")
 
-4. **Validación Estricta del Header**
-   - Rechazar cualquier formato que no sea "Bearer <token>"
-   - El token debe ser una cadena no vacía
-   - Case-sensitive para "Bearer"
+### 2. Clean Architecture
 
-### Arquitectura:
+#### 2.1 Separación de Responsabilidades
+- **Middleware:** Solo validación y extracción de datos
+- **Excepciones:** Solo representación de errores
+- **Utils (jwt.ts):** Solo operaciones criptográficas
+- **NO** mezclar lógica de negocio en el middleware
 
-5. **Separación de Responsabilidades**
-   - Middleware solo valida, NO autoriza (autorización es Fase 2)
-   - No acceder a base de datos en este middleware (performance)
-   - Delegar verificación criptográfica a `verifyToken()` existente
+#### 2.2 Estructura de Archivos
+```
+src/
+├── types/
+│   └── express.d.ts          # Extensiones de tipos
+├── infrastructure/
+│   └── middleware/
+│       └── auth.middleware.ts # Middleware de autenticación
+├── application/
+│   └── exception/
+│       ├── UnauthorizedError.ts
+│       ├── TokenExpiredError.ts
+│       └── InvalidTokenError.ts
+└── utils/
+    └── jwt.ts                 # Ya existe, no modificar
+```
 
-6. **Inmutabilidad del Request Original**
-   - Solo agregar propiedades, nunca modificar existentes
-   - Usar TypeScript para garantizar tipo-seguridad
+#### 2.3 Dependencias
+- **Middleware depende de:** `utils/jwt.ts` (verifyToken)
+- **Excepciones dependen de:** `AuthError` (clase base)
+- **Controladores dependen de:** Middleware (protección de rutas)
 
-7. **Fail-Fast**
-   - Si el token es inválido, rechazar inmediatamente
-   - No continuar el procesamiento del request
+### 3. Manejo de Errores
 
-### Código:
+#### 3.1 Códigos HTTP Estandarizados
+- **401 Unauthorized:** Token ausente, inválido o expirado
+- **403 Forbidden:** Token válido pero permisos insuficientes (Fase 2)
+- **500 Internal Server Error:** Errores inesperados del sistema
 
-8. **Usar Utilidades Existentes**
-   - DEBE usar `verifyToken()` de `src/utils/jwt.ts`
-   - No reimplementar lógica de validación JWT
+#### 3.2 Estructura de Respuestas de Error
+```json
+{
+  "status": "error",
+  "message": "Descripción legible del error",
+  "code": "CODIGO_ERROR_ESPECIFICO",
+  "timestamp": "2026-03-08T10:30:00.000Z"
+}
+```
 
-9. **Manejo de Errores Consistente**
-   - Todas las excepciones de autenticación DEBEN extender `AuthError`
-   - Respuestas JSON con estructura estándar del proyecto
+#### 3.3 Mensajes de Error
+- **NUNCA** revelar información sensible (JWT_SECRET, stack traces)
+- **SIEMPRE** proporcionar mensajes accionables
+- **INCLUIR** timestamp para debugging
+- **USAR** códigos de error únicos y consistentes
 
-10. **TypeScript Strict**
-    - Sin uso de `any`
-    - Todas las funciones con tipos de retorno explícitos
-    - Interfaces bien definidas
+### 4. TypeScript Strict
+
+#### 4.1 Type Safety
+- **NO** usar `any` sin justificación documentada
+- **SIEMPRE** definir tipos explícitos para parámetros y retornos
+- **EXTENDER** interfaces existentes, no redefinir
+- **MODULE AUGMENTATION:** Usar para extender Express tipos
+
+#### 4.2 Null Safety
+- **VERIFICAR** valores undefined/null antes de usar
+- **USAR** optional chaining (`?.`) donde sea apropiado
+- **RETORNAR** errores explícitos en lugar de throw genéricos
+
+### 5. Consistencia con el Sistema Actual
+
+#### 5.1 Patrón de Excepciones
+- **TODAS** las excepciones de auth DEBEN extender `AuthError`
+- **MANTENER** estructura: `name`, `message`, `timestamp`, `context`
+- **USAR** constructor apropiado con parámetros opcionales
+
+#### 5.2 Patrón de Verificación
+- **USAR** la función existente `verifyToken()` de `utils/jwt.ts`
+- **NO** reimplementar lógica de verificación JWT
+- **CONFIAR** en las validaciones ya implementadas
 
 ---
 
 ## Límites
 
-### Límites Técnicos:
+### Límites Técnicos
 
-**Performance:**
-- Validación de token: < 10ms por request
-- Sin consultas a base de datos en el middleware de autenticación
-- Overhead mínimo en requests
+#### 1. Expiración de Tokens
+- **Límite Temporal:** 15 horas (configurado en `jwt.ts`)
+- **No Renovable:** Tokens expirados DEBEN requerir nuevo login
+- **Zona Horaria:** UTC para timestamps
 
-**Concurrencia:**
-- Stateless: No mantener estado de sesión en servidor
-- Múltiples requests simultáneos con el mismo token son válidos
-- No hay límite de dispositivos/sesiones por usuario
+#### 2. Tamaño de Token
+- **Máximo Recomendado:** 8KB (límite típico de headers HTTP)
+- **Payload Mínimo:** `{ userId, email, iat, exp }`
+- **Sin Claims Personalizados:** En esta fase, solo campos estándar
 
-**Compatibilidad:**
-- Compatible con Express 4.x
-- TypeScript 5.x
-- Node.js 18+
+#### 3. Rate y Performance
+- **Tiempo de Verificación:** < 10ms por token en promedio
+- **No Caché:** Cada request valida el token (stateless)
+- **Overhead Mínimo:** No debe agregar latencia significativa
 
-### Límites de Negocio:
+### Límites de Alcance
 
-**Token Válido:**
-- Expiración: 15 horas (heredado de configuración actual)
-- No renovable automáticamente (requiere nuevo login)
-- Un token válido da acceso completo (sin granularidad hasta Fase 2)
+#### 1. Fase 1 Únicamente
+- **NO** implementar lógica de roles/permisos
+- **NO** validar recursos específicos (ownership)
+- **NO** implementar refresh tokens
+- **SOLO** validar que el usuario está autenticado
 
-**Rutas Protegidas:**
-- Por defecto, las rutas que usen el middleware requieren autenticación
-- No hay "permisos parciales" en esta fase
-- Autenticación binaria: autenticado o no autenticado
+#### 2. Compatibilidad
+- **Express:** Middleware compatible con Express 4.x+
+- **Node.js:** Versión 18+ (módulos ES6)
+- **TypeScript:** 5.x con strict mode
 
-### Límites Operacionales:
+#### 3. Dependencias Externas
+- **jsonwebtoken:** Ya instalada, no agregar más librerías JWT
+- **@types/express:** Para extensión de tipos
+- **NO** agregar dependencias nuevas sin justificación
 
-**Variables de Entorno:**
-- `JWT_SECRET` es OBLIGATORIA
-- Valor debe cumplir longitud mínima (32 chars)
-- Cambiar JWT_SECRET invalida todos los tokens existentes
+### Límites de Seguridad
 
-**Errores:**
-- Todos los errores de autenticación resultan en HTTP 401
-- No se distingue entre "token inválido" y "token expirado" en el código HTTP (ambos 401)
-- Mensajes específicos solo en el JSON de respuesta
+#### 1. Amenazas Mitigadas
+- ✅ Tokens falsificados (firma inválida)
+- ✅ Tokens expirados (replay attacks limitados)
+- ✅ Tokens ausentes (acceso no autorizado)
+- ✅ Formato inválido (tokens corruptos)
+
+#### 2. Amenazas NO Mitigadas (Fuera de Alcance)
+- ❌ Token Theft (robo de tokens válidos)
+- ❌ Man-in-the-Middle (requiere HTTPS en infraestructura)
+- ❌ Brute Force (requiere rate limiting - fuera de fase)
+- ❌ Session Hijacking (requiere blacklist - fuera de fase)
+
+#### 3. Supuestos de Seguridad
+- **HTTPS en Producción:** Los tokens NUNCA viajan por HTTP plano
+- **JWT_SECRET Seguro:** Generado criptográficamente, > 64 chars
+- **Tokens en Headers:** NUNCA en URLs o localStorage inseguro
 
 ---
 
 ## Eventos y estados (visión raíz)
 
-### Flujo de Autenticación (Happy Path):
+### Diagrama de Flujo de Estados
 
 ```
-┌─────────────┐
-│   Cliente   │
-│  con Token  │
-└──────┬──────┘
-       │
-       │ 1. POST /ruta-protegida
-       │    Authorization: Bearer eyJhbGc...
-       ▼
-┌─────────────────────────────┐
-│  Express Server             │
-│                             │
-│  ┌────────────────────────┐ │
-│  │ auth.middleware.ts     │ │
-│  │                        │ │
-│  │ 2. Extraer token       │ │
-│  │    del header          │ │
-│  └───────┬────────────────┘ │
-│          │                  │
-│          │ 3. Validar token │
-│          ▼                  │
-│  ┌────────────────────────┐ │
-│  │   verifyToken()        │ │
-│  │   (utils/jwt.ts)       │ │
-│  │                        │ │
-│  │ 4. Verificar firma y   │ │
-│  │    expiración          │ │
-│  └───────┬────────────────┘ │
-│          │                  │
-│          │ 5. Token válido  │
-│          │    { userId,     │
-│          │      email }     │
-│          ▼                  │
-│  ┌────────────────────────┐ │
-│  │ Agregar a req:         │ │
-│  │   req.userId = ...     │ │
-│  │   req.email = ...      │ │
-│  └───────┬────────────────┘ │
-│          │                  │
-│          │ 6. next()        │
-│          ▼                  │
-│  ┌────────────────────────┐ │
-│  │   Controlador          │ │
-│  │   (AuthController)     │ │
-│  │                        │ │
-│  │ 7. Acceso a userId,    │ │
-│  │    email desde req     │ │
-│  └───────┬────────────────┘ │
-└──────────┼──────────────────┘
-           │
-           │ 8. Respuesta exitosa
-           ▼
-     ┌─────────────┐
-     │   Cliente   │
-     │ 200/201 OK  │
-     └─────────────┘
+┌───────────────────────────────────────────────────────────────┐
+│                    REQUEST ENTRANTE                           │
+│                 (Cliente → Servidor)                          │
+└───────────────────┬───────────────────────────────────────────┘
+                    │
+                    ▼
+         ┌─────────────────────┐
+         │  Middleware Auth    │
+         │   (authMiddleware)  │
+         └──────────┬──────────┘
+                    │
+        ┌───────────┴───────────┐
+        │                       │
+        ▼                       ▼
+   [Sin Header]            [Con Header]
+   Authorization           Authorization: Bearer <token>
+        │                       │
+        ▼                       ▼
+   UnauthorizedError        Extraer Token
+   401: "No token             │
+   provided"                  ▼
+        │              ┌──────────────┐
+        │              │ verifyToken()│
+        │              │  (jwt.ts)    │
+        │              └──────┬───────┘
+        │                     │
+        │         ┌───────────┼───────────┐
+        │         │           │           │
+        │         ▼           ▼           ▼
+        │    [Expirado]  [Inválido]  [Válido]
+        │         │           │           │
+        │         ▼           ▼           ▼
+        │  TokenExpired InvalidToken  Payload
+        │     Error        Error    { userId, email }
+        │   401: "Token  401: "Invalid    │
+        │   expired"      token"          ▼
+        │         │           │      ┌─────────────┐
+        │         │           │      │ Enriquecer  │
+        │         │           │      │  Request    │
+        │         │           │      │ req.userId  │
+        │         │           │      │ req.email   │
+        │         │           │      └──────┬──────┘
+        │         │           │             │
+        │         └───────────┴─────────────┘
+        │                     │
+        ▼                     ▼
+   [Error Handler]      [Next Middleware]
+   Response JSON        o Controller
+   Status: 401               │
+   Con detalles              ▼
+                    ┌─────────────────┐
+                    │ Lógica Negocio  │
+                    │  (Controller)   │
+                    └─────────┬───────┘
+                              │
+                              ▼
+                        Response 200/201
 ```
 
-### Flujo con Token Inválido (Error Path):
+### Estados del Sistema
 
+#### Estado 1: REQUEST_RECEIVED
+**Descripción:** Request HTTP llega al servidor  
+**Trigger:** Cliente hace request a endpoint protegido  
+**Siguiente Estado:** TOKEN_EXTRACTION
+
+#### Estado 2: TOKEN_EXTRACTION
+**Descripción:** Middleware busca header Authorization  
+**Condiciones:**
+- ✅ Header presente → TOKEN_VALIDATION
+- ❌ Header ausente → UNAUTHORIZED_ERROR
+
+#### Estado 3: TOKEN_VALIDATION
+**Descripción:** Verificación criptográfica del JWT  
+**Proceso:**
+1. Separar "Bearer" del token
+2. Llamar `verifyToken(token)`
+3. Verificar firma con JWT_SECRET
+4. Verificar expiración
+5. Extraer payload
+
+**Condiciones:**
+- ✅ Token válido → REQUEST_ENRICHMENT
+- ❌ Token expirado → EXPIRED_ERROR
+- ❌ Token inválido → INVALID_TOKEN_ERROR
+
+#### Estado 4: REQUEST_ENRICHMENT
+**Descripción:** Agregar datos del usuario al Request  
+**Acciones:**
+- Asignar `req.userId = payload.userId`
+- Asignar `req.email = payload.email`
+- Continuar al siguiente middleware
+
+**Siguiente Estado:** CONTROLLER_EXECUTION
+
+#### Estado 5: CONTROLLER_EXECUTION
+**Descripción:** Lógica de negocio se ejecuta  
+**Contexto Disponible:**
+- `req.userId`: UUID del usuario autenticado
+- `req.email`: Email del usuario autenticado
+- Request autenticado y verificado
+
+**Siguiente Estado:** RESPONSE_SUCCESS
+
+#### Estado ERROR: UNAUTHORIZED_ERROR
+**HTTP Status:** 401  
+**Response:**
+```json
+{
+  "status": "error",
+  "message": "No authorization token provided",
+  "code": "UNAUTHORIZED",
+  "timestamp": "2026-03-08T..."
+}
 ```
-┌─────────────┐
-│   Cliente   │
-│  sin Token  │
-│  o inválido │
-└──────┬──────┘
-       │
-       │ 1. POST /ruta-protegida
-       │    Authorization: Bearer INVALID_TOKEN
-       ▼
-┌─────────────────────────────┐
-│  Express Server             │
-│                             │
-│  ┌────────────────────────┐ │
-│  │ auth.middleware.ts     │ │
-│  │                        │ │
-│  │ 2. Extraer token       │ │
-│  └───────┬────────────────┘ │
-│          │                  │
-│          │ 3. Validar       │
-│          ▼                  │
-│  ┌────────────────────────┐ │
-│  │   verifyToken()        │ │
-│  │                        │ │
-│  │ ❌ Token inválido       │ │
-│  │    throw Error         │ │
-│  └───────┬────────────────┘ │
-│          │                  │
-│          │ 4. catch error   │
-│          ▼                  │
-│  ┌────────────────────────┐ │
-│  │ Determinar tipo        │ │
-│  │ de error:              │ │
-│  │ - Sin token            │ │
-│  │ - Malformado           │ │
-│  │ - Expirado             │ │
-│  │ - Firma inválida       │ │
-│  └───────┬────────────────┘ │
-│          │                  │
-│          │ 5. res.status(401)│
-│          │    .json({...})  │
-│          ▼                  │
-│     STOP - No llega        │
-│     al controlador         │
-└────────────────────────────┘
-       │
-       │ 6. Respuesta error
-       ▼
-┌─────────────┐
-│   Cliente   │
-│  401 Error  │
-└─────────────┘
+
+#### Estado ERROR: EXPIRED_ERROR
+**HTTP Status:** 401  
+**Response:**
+```json
+{
+  "status": "error",
+  "message": "Token has expired",
+  "code": "TOKEN_EXPIRED",
+  "timestamp": "2026-03-08T..."
+}
 ```
 
-### Transiciones de Estado del Request:
+#### Estado ERROR: INVALID_TOKEN_ERROR
+**HTTP Status:** 401  
+**Response:**
+```json
+{
+  "status": "error",
+  "message": "Invalid authentication token",
+  "code": "INVALID_TOKEN",
+  "timestamp": "2026-03-08T..."
+}
+```
 
-1. **Request Inicial** → Sin información de usuario
-2. **Middleware Ejecutado** → Request con `userId` y `email` (si válido)
-3. **Error de Autenticación** → Request abortado, respuesta 401 enviada
-4. **Controlador Recibe** → Request enriquecido con datos de usuario
+### Eventos del Sistema
 
-### Eventos del Sistema:
+#### Evento: TOKEN_VALIDATED
+**Cuándo:** Token JWT verificado exitosamente  
+**Payload:**
+```typescript
+{
+  userId: string;
+  email: string;
+  timestamp: string;
+}
+```
+**Acción:** Continuar procesamiento del request
 
-| Evento | Trigger | Resultado |
-|--------|---------|-----------|
-| `TokenValidationStarted` | Middleware recibe request | Inicia proceso de validación |
-| `TokenExtracted` | Header Authorization parseado | Token disponible para validar |
-| `TokenValid` | `verifyToken()` exitoso | Usuario autenticado, continua flujo |
-| `TokenMissing` | Header Authorization ausente | 401 Unauthorized |
-| `TokenMalformed` | Header sin formato "Bearer <token>" | 401 Unauthorized |
-| `TokenExpired` | Token válido pero expirado | 401, mensaje específico |
-| `TokenInvalid` | Firma incorrecta o payload corrupto | 401 Unauthorized |
-| `UserAuthenticated` | Token válido agregado a req | Controlador puede proceder |
+#### Evento: AUTH_FAILED
+**Cuándo:** Validación de token falla  
+**Payload:**
+```typescript
+{
+  reason: 'missing' | 'expired' | 'invalid';
+  timestamp: string;
+  ip?: string; // Opcional para auditoría
+}
+```
+**Acción:** Rechazar request con 401
 
 ---
 
 ## Criterios de aceptación (root)
 
-### AC-1: Extensión de Tipos de Request
+### CA-1: Extracción de Token desde Header
 
-**Como** desarrollador  
-**Quiero** que TypeScript reconozca `userId` y `email` en el objeto Request  
-**Para** tener autocompletado y type-safety en los controladores  
+#### CA-1.1: Token Presente y Válido
+**DADO** un request con header `Authorization: Bearer <token-valido>`  
+**CUANDO** el middleware de autenticación se ejecuta  
+**ENTONCES**:
+- El token se extrae correctamente
+- Se llama a `verifyToken(token)`
+- No se lanza ningún error
+- El request continúa al siguiente middleware
 
-**Criterios:**
-- ✅ Archivo `src/types/express.d.ts` creado
-- ✅ Interfaz `Request` de Express extendida con:
-  - `userId: string`
-  - `email: string`
-  - `userRole?: string` (para uso futuro en Fase 2)
-- ✅ TypeScript no muestra errores al acceder a `req.userId` o `req.email`
-- ✅ Propiedades opcionales marcadas correctamente
+**Criterio de Éxito:** Token extraído sin el prefijo "Bearer "
 
-**Definición de Hecho:**
-```typescript
-// En cualquier controlador:
-const userId = req.userId; // ✅ Sin error de TypeScript
-const email = req.email;   // ✅ Sin error de TypeScript
-```
+#### CA-1.2: Token Ausente
+**DADO** un request sin header `Authorization`  
+**CUANDO** el middleware de autenticación se ejecuta  
+**ENTONCES**:
+- Se lanza `UnauthorizedError`
+- Se retorna status HTTP 401
+- Response incluye mensaje: "No authorization token provided"
+- El request NO continúa
 
----
+**Criterio de Éxito:** Response JSON con estructura correcta
 
-### AC-2: Middleware de Autenticación JWT
+#### CA-1.3: Header Authorization Malformado
+**DADO** un request con header `Authorization: <token>` (sin "Bearer")  
+**CUANDO** el middleware de autenticación se ejecuta  
+**ENTONCES**:
+- Se lanza `UnauthorizedError`
+- Se retorna status HTTP 401
+- Response incluye mensaje descriptivo
+- El request NO continúa
 
-**Como** sistema de API  
-**Quiero** validar automáticamente tokens JWT en rutas protegidas  
-**Para** asegurar que solo usuarios autenticados accedan a recursos sensibles  
+**Criterio de Éxito:** Manejo de formato incorrecto
 
-**Criterios:**
+### CA-2: Validación de Token JWT
 
-**2.1 Extracción del Token:**
-- ✅ Lee header `Authorization`
-- ✅ Valida formato `Bearer <token>`
-- ✅ Extrae el token correctamente
-- ✅ Rechaza headers malformados (sin "Bearer", sin espacio, etc.)
+#### CA-2.1: Token con Firma Válida y No Expirado
+**DADO** un token JWT firmado correctamente y dentro del período de validez  
+**CUANDO** se llama a `verifyToken(token)`  
+**ENTONCES**:
+- La función retorna el payload decodificado
+- Payload contiene `userId` y `email`
+- No se lanza ningún error
 
-**2.2 Validación del Token:**
-- ✅ Usa función `verifyToken()` de `src/utils/jwt.ts`
-- ✅ No reimplementa lógica de verificación
-- ✅ Maneja todas las excepciones de `verifyToken()`
+**Criterio de Éxito:** Payload extraído correctamente
 
-**2.3 Enriquecimiento del Request:**
-- ✅ Agrega `req.userId` con el ID del usuario
-- ✅ Agrega `req.email` con el email del usuario
-- ✅ Llama `next()` para continuar al siguiente middleware/controlador
+#### CA-2.2: Token Expirado
+**DADO** un token JWT cuyo campo `exp` está en el pasado  
+**CUANDO** se llama a `verifyToken(token)`  
+**ENTONCES**:
+- `verifyToken()` lanza un error
+- El middleware captura el error
+- Se lanza `TokenExpiredError`
+- Se retorna status HTTP 401
+- Response incluye código: "TOKEN_EXPIRED"
 
-**2.4 Manejo de Errores:**
-- ✅ Token ausente → 401 con código `TOKEN_REQUIRED`
-- ✅ Token malformado → 401 con código `INVALID_TOKEN_FORMAT`
-- ✅ Token expirado → 401 con código `TOKEN_EXPIRED`
-- ✅ Token inválido → 401 con código `INVALID_TOKEN`
-- ✅ Todos los errores incluyen `timestamp` y `message` descriptivo
+**Criterio de Éxito:** Error específico de expiración
 
-**Definición de Hecho:**
-```typescript
-// Aplicar middleware a ruta:
-router.post('/protected', authMiddleware, controller.method);
+#### CA-2.3: Token con Firma Inválida
+**DADO** un token JWT manipulado o firmado con secret diferente  
+**CUANDO** se llama a `verifyToken(token)`  
+**ENTONCES**:
+- `verifyToken()` lanza un error de verificación
+- El middleware captura el error
+- Se lanza `InvalidTokenError`
+- Se retorna status HTTP 401
+- Response incluye código: "INVALID_TOKEN"
 
-// Request con token válido → continúa
-// Request sin token → 401 inmediatamente
-// Request con token inválido → 401 inmediatamente
-```
+**Criterio de Éxito:** Detección de firma incorrecta
 
----
+#### CA-2.4: Token con Formato Corrupto
+**DADO** un token que no sigue el formato JWT (no tiene 3 partes separadas por punto)  
+**CUANDO** se intenta validar  
+**ENTONCES**:
+- Se lanza `InvalidTokenError`
+- Se retorna status HTTP 401
+- Response incluye mensaje descriptivo
 
-### AC-3: Excepciones de Autenticación
+**Criterio de Éxito:** Manejo de tokens mal formados
 
-**Como** sistema  
-**Quiero** excepciones específicas para cada tipo de error de autenticación  
-**Para** proporcionar mensajes claros y facilitar debugging  
+### CA-3: Enriquecimiento del Request
 
-**Criterios:**
+#### CA-3.1: Agregar userId al Request
+**DADO** un token válido con payload `{ userId: "uuid-123", email: "user@test.com" }`  
+**CUANDO** el middleware valida y procesa el token  
+**ENTONCES**:
+- `req.userId` se establece a "uuid-123"
+- El valor es accesible en controladores subsecuentes
+- El tipo de `req.userId` es `string`
 
-**3.1 UnauthorizedError:**
-- ✅ Extiende `AuthError`
-- ✅ Se lanza cuando no hay token o formato incorrecto
-- ✅ Mensaje: "Authentication required"
-- ✅ Código: `UNAUTHORIZED`
+**Criterio de Éxito:** Property accesible con TypeScript type-safe
 
-**3.2 TokenExpiredError:**
-- ✅ Extiende `AuthError`
-- ✅ Se lanza cuando el token ha expirado
-- ✅ Mensaje: "Token has expired"
-- ✅ Código: `TOKEN_EXPIRED`
+#### CA-3.2: Agregar email al Request
+**DADO** un token válido con payload `{ userId: "uuid-123", email: "user@test.com" }`  
+**CUANDO** el middleware valida y procesa el token  
+**ENTONCES**:
+- `req.email` se establece a "user@test.com"
+- El valor es accesible en controladores subsecuentes
+- El tipo de `req.email` es `string`
 
-**3.3 InvalidTokenError:**
-- ✅ Extiende `AuthError`
-- ✅ Se lanza cuando el token es inválido
-- ✅ Mensaje: "Invalid token"
-- ✅ Código: `INVALID_TOKEN`
+**Criterio de Éxito:** Property accesible con TypeScript type-safe
 
-**Definición de Hecho:**
-```typescript
-// Cada excepción puede ser instanciada:
-throw new UnauthorizedError();
-throw new TokenExpiredError();
-throw new InvalidTokenError();
+#### CA-3.3: Continuación del Flujo
+**DADO** un token validado exitosamente  
+**CUANDO** se completa el enriquecimiento del request  
+**ENTONCES**:
+- Se llama a `next()` sin errores
+- El siguiente middleware/controlador recibe el request enriquecido
+- El flujo continúa normalmente
 
-// Y capturada correctamente:
-if (error instanceof TokenExpiredError) { /* ... */ }
-```
+**Criterio de Éxito:** Ejecución sin interrupciones
 
----
+### CA-4: Manejo de Errores y Respuestas
 
-### AC-4: Respuestas HTTP Estandarizadas
+#### CA-4.1: Estructura de Respuesta de Error
+**DADO** cualquier error de autenticación  
+**CUANDO** se retorna una respuesta de error  
+**ENTONCES** debe incluir:
+- `status`: "error"
+- `message`: Descripción legible del problema
+- `code`: Código único identificable
+- `timestamp`: ISO string del momento del error
 
-**Como** cliente de la API  
-**Quiero** respuestas de error consistentes y descriptivas  
-**Para** manejar errores de autenticación apropiadamente  
+**Criterio de Éxito:** Estructura JSON consistente
 
-**Criterios:**
-- ✅ Código HTTP: 401 Unauthorized para todos los errores de autenticación
-- ✅ Content-Type: `application/json`
-- ✅ Estructura de respuesta:
-  ```json
-  {
-    "status": "error",
-    "message": "Mensaje descriptivo en inglés",
-    "code": "CODIGO_ERROR",
-    "timestamp": "2026-03-07T12:34:56.789Z"
-  }
-  ```
-- ✅ No incluir stack trace en producción
-- ✅ Mensajes claros sin exponer detalles internos
+#### CA-4.2: Código HTTP Correcto
+**DADO** diferentes tipos de errores de autenticación  
+**CUANDO** se envía la respuesta  
+**ENTONCES**:
+- Token ausente → 401
+- Token expirado → 401
+- Token inválido → 401
+- Error interno del servidor → 500
 
-**Ejemplos:**
+**Criterio de Éxito:** Status codes apropiados según RFC 7231
 
-**Sin Token:**
-```json
-{
-  "status": "error",
-  "message": "Authentication required. Please provide a valid token",
-  "code": "TOKEN_REQUIRED",
-  "timestamp": "2026-03-07T12:34:56.789Z"
-}
-```
+#### CA-4.3: Mensajes Sin Información Sensible
+**DADO** cualquier error de autenticación  
+**CUANDO** se genera el mensaje de error  
+**ENTONCES**:
+- NO incluir el token completo
+- NO incluir el JWT_SECRET
+- NO incluir stack traces en producción
+- Incluir solo información accionable
 
-**Token Expirado:**
-```json
-{
-  "status": "error",
-  "message": "Token has expired. Please login again",
-  "code": "TOKEN_EXPIRED",
-  "timestamp": "2026-03-07T12:34:56.789Z"
-}
-```
+**Criterio de Éxito:** Logs y responses seguros
 
-**Token Inválido:**
-```json
-{
-  "status": "error",
-  "message": "Invalid token provided",
-  "code": "INVALID_TOKEN",
-  "timestamp": "2026-03-07T12:34:56.789Z"
-}
-```
+### CA-5: Integración con Sistema Existente
 
----
+#### CA-5.1: Compatible con jwt.ts Existente
+**DADO** el archivo `src/utils/jwt.ts` con función `verifyToken()`  
+**CUANDO** el middleware necesita validar un token  
+**ENTONCES**:
+- Usa `verifyToken()` directamente (no reimplementa)
+- Maneja los errores de `verifyToken()` apropiadamente
+- No modifica el comportamiento de `verifyToken()`
 
-### AC-5: Integración con Rutas Existentes
+**Criterio de Éxito:** Reutilización sin duplicación
 
-**Como** desarrollador  
-**Quiero** aplicar el middleware a rutas de forma simple  
-**Para** proteger endpoints sin duplicar código  
+#### CA-5.2: Excepciones Heredan de AuthError
+**DADO** las clases `UnauthorizedError`, `TokenExpiredError`, `InvalidTokenError`  
+**CUANDO** se instancian  
+**ENTONCES**:
+- Todas extienden de `AuthError`
+- Incluyen properties: `name`, `message`, `timestamp`, `context`
+- Siguen el patrón del sistema existente
 
-**Criterios:**
-- ✅ Middleware exportado y disponible para importar
-- ✅ Se puede aplicar a rutas individuales:
-  ```typescript
-  router.post('/protected', authMiddleware, controller.method);
-  ```
-- ✅ Se puede aplicar a todas las rutas de un router:
-  ```typescript
-  router.use(authMiddleware);
-  ```
-- ✅ Compatible con otros middlewares (puede encadenarse)
-- ✅ No rompe rutas públicas existentes (no aplicar globalmente aún)
+**Criterio de Éxito:** Consistencia con excepciones actuales
 
-**Definición de Hecho:**
-- Rutas con middleware requieren token válido
-- Rutas sin middleware siguen funcionando como antes
-- No hay regresiones en funcionalidad existente
+#### CA-5.3: TypeScript Type-Safe
+**DADO** el archivo `src/types/express.d.ts`  
+**CUANDO** se usa en código  
+**ENTONCES**:
+- IntelliSense muestra `req.userId` y `req.email`
+- No hay errores de compilación TypeScript
+- Tipos inferidos correctamente
 
----
+**Criterio de Éxito:** Compilación exitosa con strict mode
 
-### AC-6: Testing Manual
+### CA-6: Testing (Opcional pero Especificado)
 
-**Como** QA/Desarrollador  
-**Quiero** poder probar manualmente el middleware  
-**Para** verificar que funciona correctamente antes de deploy  
+#### CA-6.1: Test con Token Válido
+**DADO** un test unitario del middleware  
+**CUANDO** se simula un request con token válido  
+**ENTONCES**:
+- `next()` es llamado sin errores
+- `req.userId` está definido
+- `req.email` está definido
 
-**Escenarios de Prueba:**
+**Criterio de Éxito:** Test pasa en ambiente de testing
 
-**Escenario 1: Request sin token**
-```bash
-curl -X POST http://localhost:3000/auth/protected-route
-# Esperado: 401, TOKEN_REQUIRED
-```
+#### CA-6.2: Test sin Token
+**DADO** un test unitario del middleware  
+**CUANDO** se simula un request sin header Authorization  
+**ENTONCES**:
+- Se lanza `UnauthorizedError`
+- Response tiene status 401
+- `next()` NO es llamado
 
-**Escenario 2: Request con token malformado**
-```bash
-curl -X POST http://localhost:3000/auth/protected-route \
-  -H "Authorization: INVALID_FORMAT"
-# Esperado: 401, INVALID_TOKEN_FORMAT
-```
+**Criterio de Éxito:** Test pasa verificando error esperado
 
-**Escenario 3: Request con token válido**
-```bash
-# 1. Primero hacer login para obtener token
-curl -X POST http://localhost:3000/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"test@example.com","password":"password123"}'
-# Respuesta: { "token": "eyJhbGc..." }
+#### CA-6.3: Test con Token Expirado
+**DADO** un test unitario del middleware  
+**CUANDO** se simula un request con token expirado  
+**ENTONCES**:
+- Se lanza `TokenExpiredError`
+- Response tiene status 401 con código "TOKEN_EXPIRED"
 
-# 2. Usar token en ruta protegida
-curl -X POST http://localhost:3000/auth/protected-route \
-  -H "Authorization: Bearer eyJhbGc..."
-# Esperado: 200 OK, acceso permitido
-```
-
-**Escenario 4: Request con token expirado**
-```bash
-# Usar token generado hace más de 15 horas
-curl -X POST http://localhost:3000/auth/protected-route \
-  -H "Authorization: Bearer OLD_EXPIRED_TOKEN"
-# Esperado: 401, TOKEN_EXPIRED
-```
-
-**Escenario 5: Request con token inválido (firma incorrecta)**
-```bash
-curl -X POST http://localhost:3000/auth/protected-route \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.INVALID"
-# Esperado: 401, INVALID_TOKEN
-```
-
-**Criterio de Aceptación:**
-- ✅ Todos los escenarios producen respuestas esperadas
-- ✅ No hay errores 500 (todos manejados apropiadamente)
-- ✅ Logs del servidor no muestran stack traces para errores 401
+**Criterio de Éxito:** Test pasa verificando error específico
 
 ---
 
 ## Trazabilidad
 
-### Mapeo de Requisitos a Implementación:
+### Documentos de Referencia
 
-| Requisito | Archivo(s) Afectado(s) | Tipo Cambio | Prioridad |
-|-----------|------------------------|-------------|-----------|
-| REQ-1.1: Tipos TypeScript | `src/types/express.d.ts` | Crear nuevo | P0 (Crítico) |
-| REQ-1.2: Middleware Auth | `src/infrastructure/middleware/auth.middleware.ts` | Crear nuevo | P0 (Crítico) |
-| REQ-1.3: UnauthorizedError | `src/application/exception/UnauthorizedError.ts` | Crear nuevo | P0 (Crítico) |
-| REQ-1.4: TokenExpiredError | `src/application/exception/TokenExpiredError.ts` | Crear nuevo | P0 (Crítico) |
-| REQ-1.5: InvalidTokenError | `src/application/exception/InvalidTokenError.ts` | Crear nuevo | P0 (Crítico) |
-| REQ-1.6: Tests Middleware | `src/infrastructure/middleware/__tests__/auth.middleware.test.ts` | Crear nuevo | P2 (Opcional) |
+#### DR-01: Plan de Desarrollo
+**Archivo:** `PLAN_REGISTRO_CORREOS.md`  
+**Sección:** FASE 1: Middleware de Autenticación JWT (Protección de Rutas)  
+**Relación:** Este ONE SPEC implementa completamente la Fase 1 descrita
 
-### Dependencias:
+#### DR-02: Arquitectura Actual
+**Archivos:**
+- `src/utils/jwt.ts`: Funciones de generación y verificación JWT
+- `src/application/exception/AuthError.ts`: Clase base de errores
+- `src/infrastructure/controller/AuthController.ts`: Patrón de controllers
 
-**Dependencias Internas (ya existentes):**
-- ✅ `src/utils/jwt.ts` → Función `verifyToken()` para validar tokens
-- ✅ `src/application/exception/AuthError.ts` → Clase base para excepciones
-- ✅ Variables de entorno → `JWT_SECRET` configurado
+**Relación:** El middleware sigue los patrones establecidos
 
-**Dependencias Externas (npm):**
-- ✅ `express` (ya instalado) → Tipos de Request, Response, NextFunction
-- ✅ `jsonwebtoken` (ya instalado) → Usado por jwt.ts
-- ✅ `@types/express` (ya instalado) → Tipos de TypeScript
+#### DR-03: Clean Architecture
+**Principio:** Separación de capas (Domain, Application, Infrastructure)  
+**Relación:** Middleware en capa Infrastructure, excepciones en Application
 
-**Bloqueantes:**
-- ❌ Ninguno - esta fase no depende de funcionalidad pendiente
+### Mapeo de Requerimientos a Tareas
 
-### Impacto en Fases Posteriores:
-
-| Fase Posterior | Dependencia de Fase 1 | Descripción |
-|----------------|------------------------|-------------|
-| **Fase 2: Autorización Admin** | authMiddleware | El middleware de admin debe ejecutarse DESPUÉS de authMiddleware |
-| **Fase 5: Endpoint Registro** | authMiddleware | La ruta `/auth/register-email` usará este middleware |
-| **Futures Features** | req.userId, req.email | Todas las rutas protegidas necesitan acceder a estos campos |
-
-### Archivos Creados (Nuevos):
-
-```
-src/
-├── types/
-│   └── express.d.ts                                    [NUEVO] ✨
-└── infrastructure/
-    └── middleware/
-        ├── auth.middleware.ts                          [NUEVO] ✨
-        └── __tests__/
-            └── auth.middleware.test.ts                 [NUEVO OPCIONAL] ✨
-└── application/
-    └── exception/
-        ├── UnauthorizedError.ts                        [NUEVO] ✨
-        ├── TokenExpiredError.ts                        [NUEVO] ✨
-        └── InvalidTokenError.ts                        [NUEVO] ✨
-```
-
-### Archivos Modificados:
-- Ninguno en esta fase (arquitectura aditiva, sin breaking changes)
-
-### Testing:
-
-**Pruebas Requeridas:**
-1. ✅ Prueba manual con Postman/cURL (requisito mínimo)
-2. ⚪ Tests unitarios con Jest (opcional pero recomendado)
-
-**Cobertura Esperada (si se implementan tests):**
-- Función `authMiddleware`: 100%
-- Excepciones de autenticación: 100%
-- Casos edge: token vacío, header sin Bearer, null, undefined
-
-### Checklist de Completitud:
-
-Antes de marcar esta fase como completa:
-
-- [ ] Todos los archivos nuevos creados y compilando sin errores
-- [ ] TypeScript no muestra errores en `req.userId` o `req.email`
-- [ ] Middleware puede ser importado desde `auth.routes.ts`
-- [ ] Las 3 excepciones extienden correctamente `AuthError`
-- [ ] Request con token válido continúa al controlador
-- [ ] Request sin token retorna 401 con mensaje apropiado
-- [ ] Request con token expirado retorna 401 específico
-- [ ] Request con token inválido retorna 401 específico
-- [ ] Respuestas JSON siguen formato estándar del proyecto
-- [ ] No hay regresiones en endpoints existentes
-- [ ] Código cumple estándares TypeScript (no usar `any`)
-- [ ] Build exitoso: `npm run build` sin errores
-- [ ] Servidor inicia correctamente: `npm run dev`
-- [ ] Pruebas manuales con cURL/Postman exitosas
-- [ ] Logs del servidor no exponen información sensible
-
-### Versionado y Rollback:
-
-**Git Strategy:**
-- Branch: `feature/auth-middleware-phase1`
-- Commits atómicos por cada archivo creado
-- PR con descripción completa y checklist
-
-**Rollback:**
-- Si falla: eliminar archivos nuevos y revertir imports
-- No hay cambios en base de datos en esta fase
-- Tokens existentes siguen siendo válidos
-
----
-
-## 📦 Entregables de la Fase 1
-
-### Código Fuente:
-1. `src/types/express.d.ts` - Extensión de tipos
-2. `src/infrastructure/middleware/auth.middleware.ts` - Middleware principal
-3. `src/application/exception/UnauthorizedError.ts` - Excepción sin token
-4. `src/application/exception/TokenExpiredError.ts` - Excepción token expirado
-5. `src/application/exception/InvalidTokenError.ts` - Excepción token inválido
-
-### Documentación:
-- Este ONE_SPEC.md completado
-- Comentarios JSDoc en el middleware
-- Ejemplos de uso en código
-
-### Testing:
-- Scripts de prueba manual con cURL
-- (Opcional) Suite de tests unitarios
-
----
-
-## 🔗 Referencias Técnicas
-
-**Documentación Interna:**
-- [PLAN_REGISTRO_CORREOS.md](./PLAN_REGISTRO_CORREOS.md) - Plan completo de 6 fases
-- [src/utils/jwt.ts](./src/utils/jwt.ts) - Utilidades JWT existentes
-- [src/application/exception/AuthError.ts](./src/application/exception/AuthError.ts) - Clase base de errores
-
-**Documentación Externa:**
-- Express Middleware: https://expressjs.com/en/guide/writing-middleware.html
-- TypeScript Declaration Merging: https://www.typescriptlang.org/docs/handbook/declaration-merging.html
-- JWT Best Practices: https://tools.ietf.org/html/rfc7519
-- HTTP 401 Unauthorized: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401
-
-**Ejemplos de Código:**
-
-**Uso Básico:**
+#### Tarea 1.1: Crear la interfaz de Request extendido
+**Archivo:** `src/types/express.d.ts`  
+**Criterios de Aceptación:** CA-3.1, CA-3.2, CA-5.3  
+**Principios Aplicados:** TypeScript Strict (4.1, 4.2)  
+**Entregable:**
 ```typescript
-// En auth.routes.ts
-import { authMiddleware } from '../middleware/auth.middleware';
-
-// Aplicar a ruta específica
-router.post('/protected', authMiddleware, controller.method);
-```
-
-**Acceso en Controlador:**
-```typescript
-// En controlador
-async method(req: Request, res: Response): Promise<void> {
-  const userId = req.userId;  // ✅ TypeScript OK
-  const email = req.email;    // ✅ TypeScript OK
-  
-  // Usar userId para lógica de negocio
-  const user = await userRepository.findById(userId);
+// Extensión de tipos Express con module augmentation
+declare global {
+  namespace Express {
+    interface Request {
+      userId: string;
+      email: string;
+      userRole?: string; // Para Fase 2
+    }
+  }
 }
 ```
 
+#### Tarea 1.2: Crear el middleware de autenticación
+**Archivo:** `src/infrastructure/middleware/auth.middleware.ts`  
+**Criterios de Aceptación:** CA-1.*, CA-2.*, CA-3.*, CA-4.*  
+**Principios Aplicados:** Todos (1.1-5.2)  
+**Entregable:**
+```typescript
+import { Request, Response, NextFunction } from 'express';
+import { verifyToken } from '../../utils/jwt';
+import { UnauthorizedError } from '../../application/exception/UnauthorizedError';
+import { TokenExpiredError } from '../../application/exception/TokenExpiredError';
+import { InvalidTokenError } from '../../application/exception/InvalidTokenError';
+
+/**
+ * Middleware de autenticación JWT
+ * Valida que el request incluya un token JWT válido en el header Authorization
+ */
+export const authMiddleware = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    // Extraer header Authorization
+    const authHeader = req.headers.authorization;
+    
+    if (!authHeader) {
+      throw new UnauthorizedError('No authorization token provided');
+    }
+
+    // Verificar formato Bearer
+    if (!authHeader.startsWith('Bearer ')) {
+      throw new UnauthorizedError('Invalid authorization format. Expected: Bearer <token>');
+    }
+
+    // Extraer token (sin "Bearer ")
+    const token = authHeader.substring(7);
+    
+    if (!token || token.trim().length === 0) {
+      throw new UnauthorizedError('Token cannot be empty');
+    }
+
+    // Validar token usando función existente
+    const payload = verifyToken(token);
+    
+    // Enriquecer request con datos del usuario
+    req.userId = payload.userId;
+    req.email = payload.email;
+
+    // Continuar al siguiente middleware
+    next();
+    
+  } catch (error) {
+    // Manejar errores específicos de JWT
+    if (error instanceof UnauthorizedError) {
+      res.status(401).json({
+        status: 'error',
+        message: error.message,
+        code: 'UNAUTHORIZED',
+        timestamp: new Date().toISOString()
+      });
+      return;
+    }
+    
+    // Detectar token expirado (error de jsonwebtoken)
+    if ((error as any).name === 'TokenExpiredError') {
+      const tokenExpiredError = new TokenExpiredError('Token has expired');
+      res.status(401).json({
+        status: 'error',
+        message: tokenExpiredError.message,
+        code: 'TOKEN_EXPIRED',
+        timestamp: tokenExpiredError.timestamp
+      });
+      return;
+    }
+    
+    // Detectar token inválido (firma incorrecta, formato corrupto)
+    if ((error as any).name === 'JsonWebTokenError' || (error as any).message?.includes('invalid')) {
+      const invalidTokenError = new InvalidTokenError('Invalid authentication token');
+      res.status(401).json({
+        status: 'error',
+        message: invalidTokenError.message,
+        code: 'INVALID_TOKEN',
+        timestamp: invalidTokenError.timestamp
+      });
+      return;
+    }
+    
+    // Error inesperado
+    console.error('Unexpected auth middleware error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Internal server error during authentication',
+      code: 'INTERNAL_ERROR',
+      timestamp: new Date().toISOString()
+    });
+  }
+};
+```
+
+#### Tarea 1.3: Crear excepciones de autenticación
+**Archivos:**
+- `src/application/exception/UnauthorizedError.ts`
+- `src/application/exception/TokenExpiredError.ts`
+- `src/application/exception/InvalidTokenError.ts`
+
+**Criterios de Aceptación:** CA-4.1, CA-5.2  
+**Principios Aplicados:** Consistencia (5.1)  
+
+**Entregables:**
+
+```typescript
+// UnauthorizedError.ts
+import { AuthError } from './AuthError';
+
+export class UnauthorizedError extends AuthError {
+  constructor(message = 'Unauthorized access', context?: Record<string, unknown>) {
+    super(message, context);
+    this.name = 'UnauthorizedError';
+  }
+}
+
+// TokenExpiredError.ts
+import { AuthError } from './AuthError';
+
+export class TokenExpiredError extends AuthError {
+  constructor(message = 'Token has expired', context?: Record<string, unknown>) {
+    super(message, context);
+    this.name = 'TokenExpiredError';
+  }
+}
+
+// InvalidTokenError.ts
+import { AuthError } from './AuthError';
+
+export class InvalidTokenError extends AuthError {
+  constructor(message = 'Invalid token', context?: Record<string, unknown>) {
+    super(message, context);
+    this.name = 'InvalidTokenError';
+  }
+}
+```
+
+#### Tarea 1.4: Crear tests del middleware (OPCIONAL)
+**Archivo:** `src/infrastructure/middleware/__tests__/auth.middleware.test.ts`  
+**Criterios de Aceptación:** CA-6.*  
+**Principios Aplicados:** Testing Best Practices  
+**Estado:** Documentado pero no obligatorio en Fase 1
+
+**Entregable (plantilla):**
+```typescript
+import { Request, Response, NextFunction } from 'express';
+import { authMiddleware } from '../auth.middleware';
+import { generateToken } from '../../../utils/jwt';
+
+describe('authMiddleware', () => {
+  let mockReq: Partial<Request>;
+  let mockRes: Partial<Response>;
+  let mockNext: NextFunction;
+
+  beforeEach(() => {
+    mockReq = { headers: {} };
+    mockRes = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn()
+    };
+    mockNext = jest.fn();
+  });
+
+  it('debería llamar next() con token válido', async () => {
+    const validToken = generateToken('user-id-123', 'test@example.com');
+    mockReq.headers = { authorization: `Bearer ${validToken}` };
+    
+    await authMiddleware(mockReq as Request, mockRes as Response, mockNext);
+    
+    expect(mockNext).toHaveBeenCalled();
+    expect(mockReq.userId).toBe('user-id-123');
+    expect(mockReq.email).toBe('test@example.com');
+  });
+
+  it('debería retornar 401 sin header Authorization', async () => {
+    await authMiddleware(mockReq as Request, mockRes as Response, mockNext);
+    
+    expect(mockRes.status).toHaveBeenCalledWith(401);
+    expect(mockNext).not.toHaveBeenCalled();
+  });
+
+  // Más tests según CA-6.2 y CA-6.3
+});
+```
+
+### Matriz de Trazabilidad
+
+| ID | Requerimiento | Tarea | Archivo | CA | Principio | Estado |
+|----|---------------|-------|---------|-----|-----------|--------|
+| REQ-01 | Extensión TypeScript Request | 1.1 | express.d.ts | CA-3.*, CA-5.3 | 4.1, 4.2 | ✅ Especificado |
+| REQ-02 | Middleware de autenticación | 1.2 | auth.middleware.ts | CA-1.*, CA-2.*, CA-3.*, CA-4.* | Todos | ✅ Especificado |
+| REQ-03 | Excepción UnauthorizedError | 1.3 | UnauthorizedError.ts | CA-4.1, CA-5.2 | 3.1, 5.1 | ✅ Especificado |
+| REQ-04 | Excepción TokenExpiredError | 1.3 | TokenExpiredError.ts | CA-4.1, CA-5.2 | 3.1, 5.1 | ✅ Especificado |
+| REQ-05 | Excepción InvalidTokenError | 1.3 | InvalidTokenError.ts | CA-4.1, CA-5.2 | 3.1, 5.1 | ✅ Especificado |
+| REQ-06 | Tests unitarios | 1.4 | auth.middleware.test.ts | CA-6.* | Testing | 📝 Opcional |
+
+### Dependencias entre Fases
+
+#### ⬆️ Dependencias de Entrada (Ya Completadas)
+1. **JWT Utils:** `src/utils/jwt.ts` con `generateToken()` y `verifyToken()`
+2. **AuthError:** `src/application/exception/AuthError.ts` clase base
+3. **Express Setup:** Servidor Express configurado en `src/index.ts`
+4. **TypeScript Config:** `tsconfig.json` con strict mode
+
+#### ➡️ Salidas de Esta Fase (Para Fases Posteriores)
+1. **Middleware Auth:** Reutilizable en todas las rutas protegidas
+2. **Request Extendido:** `req.userId` y `req.email` disponibles en controladores
+3. **Excepciones Auth:** Clases reutilizables en otras fases
+4. **Patrón Establecido:** Template para futuros middlewares (admin, roles)
+
+#### ⬇️ Dependencias de Salida (Próximas Fases)
+- **FASE 2:** Middleware de admin necesita este middleware como prerequisito
+- **FASE 5:** Endpoint de registro usará `authMiddleware` y `adminMiddleware`
+- **FASE 6:** Todas las rutas protegidas aplicarán este middleware
+
+### Validación de Completitud
+
+#### ✅ Checklist de Implementación
+- [ ] **express.d.ts creado** con extensión de Request
+- [ ] **auth.middleware.ts implementado** con toda la lógica
+- [ ] **UnauthorizedError.ts creado** y testeado
+- [ ] **TokenExpiredError.ts creado** y testeado
+- [ ] **InvalidTokenError.ts creado** y testeado
+- [ ] **Tests opcionales creados** (si se decide implementar)
+- [ ] **Documentación actualizada** en README
+- [ ] **Integración verificada** con rutas existentes
+
+#### ✅ Checklist de Calidad
+- [ ] **TypeScript compila** sin errores ni warnings
+- [ ] **Linter pasa** (ESLint si está configurado)
+- [ ] **Logs seguros** (sin tokens completos)
+- [ ] **Mensajes claros** en respuestas de error
+- [ ] **Código comentado** con JSDoc donde sea apropiado
+
+#### ✅ Checklist de Seguridad
+- [ ] **JWT_SECRET validado** antes de verificar tokens
+- [ ] **Solo Bearer tokens** aceptados en Authorization header
+- [ ] **Firma JWT verificada** en cada request
+- [ ] **Expiración validada** correctamente
+- [ ] **Sin información sensible** en logs o responses
+
 ---
 
-**Fin del ONE_SPEC de Fase 1: Middleware de Autenticación JWT**
+**FIN DEL ONE SPEC - FASE 1**
+
+**Próximos Pasos:**
+1. Implementar los 5 archivos especificados
+2. Aplicar el middleware a rutas que requieran autenticación
+3. Validar con tests manuales o automatizados
+4. Proceder a FASE 2: Sistema de Autorización (Admin Middleware)
