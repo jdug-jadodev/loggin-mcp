@@ -2,6 +2,7 @@ import express, { Application, Request, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import healthRoutes from './infrastructure/routes/health.routes';
+import authRoutes from './infrastructure/routes/auth.routes';
 import notFoundRoutes from './infrastructure/routes/notFound.routes';
 
 dotenv.config();
@@ -18,6 +19,7 @@ app.use((req: Request, res: Response, next) => {
 });
 
 app.use('/health', healthRoutes);
+app.use('/auth', authRoutes);
 app.use(notFoundRoutes);
 
 const validateEnvVars = (): void => {
