@@ -1,81 +1,71 @@
 # Informe de Exploración Automática
 
 ## Contexto detectado
-- Lenguaje principal: TypeScript (Node.js).
-- Framework HTTP: Express.
-- Base de datos / BaaS: Supabase (uso de `@supabase/supabase-js`).
-- Autenticación: JWT (`jsonwebtoken`) y gestión de contraseñas con `bcrypt`.
-- Arquitectura: Capas estilo Clean/Hexagonal (carpetas `application`, `domain`, `infrastructure`, `dto`, `usecase`, `portout` y `adapter`).
-- Proyecto orientado a microservicio de autenticación (entrada en `src/index.ts`, rutas en `src/infrastructure/routes`).
-- Herramientas de desarrollo: TypeScript, `ts-node-dev` para desarrollo, `tsc` para compilación.
+
+- Lenguajes: TypeScript (principal), JavaScript (scripts).
+- Plataforma / runtime: Node.js.
+- Frameworks / librerías: Express (por `types/express.d.ts` y estructura de `routes`), Supabase (por `infrastructure/config/supabase.ts`), JWT (por `utils/jwt.ts`).
+- Arquitectura: variante de Clean Architecture / Hexagonal (carpetas `application`, `domain`, `infrastructure`, `usecase`, `port`).
 
 ## Archivos analizados
-- package.json
-- tsconfig.json
-- src/index.ts
-- src/infrastructure/routes/auth.routes.ts
-- src/infrastructure/routes/health.routes.ts
-- src/infrastructure/routes/notFound.routes.ts
-- src/infrastructure/controller/AuthController.ts
-- src/infrastructure/controller/HealthController.ts
-- src/infrastructure/repository/adapter/SupabaseUserRepositoryAdapter.ts
-- src/domain/entity/User.ts
-- src/domain/port/portout/UserRepositoryPort.ts
-- src/application/usecase/* (CheckEmailExistsUseCase, CreatePasswordUseCase, LoginUseCase)
-- src/application/validator/* (EmailValidator, PasswordValidator)
-- src/utils/jwt.ts
-- src/utils/password.ts
-- tests / scripts sueltos: test-jwt.ts, test-password.ts, test-supabase.ts, test-jwt-simple.ts
+
+- [package.json](package.json) — dependencias y scripts.
+- [tsconfig.json](tsconfig.json) — configuración TypeScript.
+- [src/index.ts](src/index.ts) — punto de entrada de la app.
+- [src/application/usecase](src/application/usecase) — casos de uso: `LoginUseCase.ts`, `CreatePasswordUseCase.ts`, `CheckEmailExistsUseCase.ts`.
+- [src/application/dto](src/application/dto) — DTOs para inputs/resultados.
+- [src/domain/entity/User.ts](src/domain/entity/User.ts) — entidad de dominio `User`.
+- [src/infrastructure/repository/adapter](src/infrastructure/repository/adapter) — adaptadores Supabase para repositorios.
+- [src/infrastructure/controller/AuthController.ts](src/infrastructure/controller/AuthController.ts) — controladores HTTP.
+- [src/infrastructure/middleware/auth.middleware.ts](src/infrastructure/middleware/auth.middleware.ts) — middleware de autenticación.
+- [src/utils/jwt.ts](src/utils/jwt.ts) — helpers JWT.
+- [src/utils/password.ts](src/utils/password.ts) — hashing/validación de passwords.
+
+(Se ha tomado muestra representativa de la estructura listada en el workspace.)
 
 ## Explicación detallada
-- Estructura y patrón: El código sigue una separación de responsabilidades clara. Las rutas y controladores están en `infrastructure`, las reglas de negocio y casos de uso en `application/usecase`, y los contratos de persistencia en `domain/port/portout`. Esto es característico de una arquitectura hexagonal o limpia y facilita pruebas e intercambio de adaptadores (por ejemplo, cambiar Supabase por otra DB).
 
-- Entrypoint y configuración: `src/index.ts` inicia un servidor Express, aplica JSON body parsing y CORS, registra rutas y valida variables de entorno mínimas (`JWT_SECRET`). También maneja errores de proceso (uncaughtException, unhandledRejection) y señales.
+- Estructura y patrón: El proyecto sigue una separación clara entre capas: `application` (casos de uso y DTOs), `domain` (entidades y lógica de negocio), `infrastructure` (implementaciones concretas: repositorios, controllers, middleware) y `port` (interfaces). Esto sugiere un diseño inspirado en Clean Architecture / Hexagonal.
 
-- Persistencia y adaptadores: Existe un adaptador para Supabase (`SupabaseUserRepositoryAdapter`) que implementa el `UserRepositoryPort`, lo que permite desacoplar la lógica de negocio de la capa de datos.
+- Persistencia y adaptadores: Hay implementaciones que conectan con Supabase: `SupabaseUserRepositoryAdapter` y `SupabasePasswordTokenRepositoryAdapter` en `infrastructure/repository/adapter`, lo cual permite intercambiar la persistencia sin afectar la lógica de negocio.
 
-- Seguridad y autenticación: Se usa `bcrypt` para hashing de contraseñas y `jsonwebtoken` para generación de tokens. Hay utilidades en `src/utils` que encapsulan esas responsabilidades.
+- Seguridad y autenticación: Uso de JWT (`utils/jwt.ts`) y manejo de contraseñas (`utils/password.ts`) junto con DTOs y validadores (`validator/`) para entradas sugiere atención a validación y seguridad en el flujo de autenticación.
 
-- Manejo de errores: Hay excepciones de dominio (ej. `EmailNotFoundError`, `InvalidCredentialsError`, `WeakPasswordError`) y el controlador las mapea a respuestas HTTP con códigos y mensajes estructurados.
+- Controladores y rutas: `AuthController` y `auth.routes.ts` exponen endpoints; hay middleware de autenticación y admin para protección de rutas.
 
-- Validación y DTOs: Se usan validadores básicos (`EmailValidator`, `PasswordValidator`) y DTOs en `application/dto` para normalizar entradas/salidas.
-
-- Scripts y desarrollo: `npm run dev` usa `ts-node-dev` para desarrollo; `build` usa `tsc`. No se encontró configuración de linters ni de tests automatizados (aunque hay scripts de prueba manuales `.ts`).
+- Tipado y buenas prácticas: Uso extensivo de TypeScript, DTOs y mappers (`mapper/`) mejora la claridad de contratos entre capas y reduce errores en tiempo de ejecución.
 
 ## Puntos fuertes
-- Arquitectura clara y modular (clean/hexagonal), lo que favorece mantenibilidad y testabilidad.
-- Buen manejo de errores y mapeo a respuestas HTTP desde el controlador.
-- Uso de adaptadores de persistencia: facilita swapping de la capa de datos.
-- Encapsulado de utilidades sensibles (JWT, hashing) en `utils`.
-- Validación básica de entradas y separación de responsabilidades.
+
+- Arquitectura modular y bien separada en capas.
+- Uso de TypeScript con DTOs y mappers para claridad de contratos.
+- Adaptadores para Supabase que facilitan el cambio de persistencia.
+- Manejo explícito de errores con tipos en `exception/`.
+- Presencia de validadores y middleware para seguridad.
 
 ## Áreas de mejora
-- Variables de entorno: `src/index.ts` valida `JWT_SECRET`, pero no se observa verificación de variables relacionadas con Supabase (`SUPABASE_URL`, `SUPABASE_KEY`) — añadir validación y un `.env.example` mejoraría on-boarding.
-- Tests automatizados y CI: Hay scripts de prueba manuales, falta integración con Jest/Mocha y pipelines (GitHub Actions) para tests y linting.
-- Cobertura de validaciones: aumentar validaciones (longitud, reglas de contraseña, límites) y usar un esquema de validación centralizado (Zod/Joi) para evitar duplicación.
-- Seguridad de tokens: claramente se generan JWTs, pero convendría revisar políticas de expiración, refresh tokens, revocación y almacenamiento seguro de `JWT_SECRET` (secret manager cuando sea posible).
-- Rate limiting y protección contra abuso en endpoints de auth (ej. `express-rate-limit`).
-- Observabilidad: añadir logging estructurado (p. ej. `pino` o `winston`), métricas y trazabilidad (opcionalado). También integrar Sentry/u otra herramienta de monitoreo de errores.
-- Lint/Formatting: no se encontró ESLint/Prettier configurado — recomendable para consistencia.
-- Manejo de errores internos: algunos catch generales devuelven 500; considerar instrumentar y diferenciar fallos recuperables de no recuperables.
 
-## Próximos pasos recomendados (priorizados)
-- Añadir un `.env.example` con variables requeridas (`JWT_SECRET`, `SUPABASE_URL`, `SUPABASE_KEY`, `NODE_ENV`, `PORT`).
-- Integrar pruebas unitarias y de integración (Jest + supertest) para controladores y casos de uso.
-- Configurar CI (GitHub Actions) para ejecutar lint + build + tests en PRs.
-- Añadir ESLint y Prettier, y una configuración base de TypeScript stricter (`strict: true` en `tsconfig.json`).
-- Revisar seguridad del flujo de tokens: definir expiraciones, refresh tokens y estrategias de revocación.
-- Añadir límites y protección (rate limiting, validación de tamaño de payload ya presente) y políticas de CORS más restrictivas en producción.
-- Añadir logging estructurado y monitorización de errores.
+- Cobertura de tests: no se evidencian tests (unitarios o de integración). Añadir pruebas para usecases, mappers y adaptadores.
+- Manejo de configuración: asegurar que las variables sensibles (URLs, keys) estén en `.env` y documentadas; añadir `dotenv` si falta.
+- Logging y observabilidad: incorporar logs estructurados y manejo de errores centralizado (middleware de errores) si no está presente.
+- Documentación de API: agregar OpenAPI / swagger para describir endpoints y contratos.
+- Scripts de CI/CD y pasos reproducibles: mejorar `package.json` con comandos de lint, test y build; añadir pipeline si procede.
+
+## Próximos pasos recomendados
+
+1. Añadir una batería de tests: unitarios para `usecase` y `mapper`, e2e para rutas de `AuthController`.
+2. Revisar y mover secretos a variables de entorno; documentar en README o `.env.example`.
+3. Añadir un middleware global de manejo de errores y logs estructurados.
+4. Generar documentación API con OpenAPI y exponer UI (Swagger).
+5. Añadir checks en CI: `npm run build`, `npm test`, `npm run lint`.
 
 ## Recursos útiles
-- Express + TypeScript: https://expressjs.com/ + guías de TS para Express.
-- Validación: Zod (https://github.com/colinhacks/zod) o Joi.
-- Testing: Jest + supertest para pruebas HTTP.
-- Linting: ESLint + Prettier + plugins de TypeScript.
-- Seguridad: OWASP ASVS y recomendaciones para JWT (gestión de expiración, revocación), y `express-rate-limit`.
-- Supabase: documentación oficial https://supabase.com/docs
+
+- Clean Architecture concepts: https://8thlight.com/blog/uncle-bob/2012/08/13/the-clean-architecture.html
+- TypeScript + Express patterns: https://www.typescriptlang.org/docs/handbook/intro.html
+- Supabase docs: https://supabase.com/docs
+- JWT best practices: https://auth0.com/learn/json-web-tokens/
 
 ---
 
-_Informe generado automáticamente por análisis estático del repositorio._
+Informe generado automáticamente por análisis estático del árbol de proyecto disponible.

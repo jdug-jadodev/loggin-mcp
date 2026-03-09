@@ -40,13 +40,14 @@ export class SupabaseUserRepositoryAdapter implements UserRepositoryPort {
     return data ? UserMapper.toDomain(data as UserEntity) : null;
   }
   
-  async create(email: string): Promise<User> {
+  async create(email: string, role: string = 'user'): Promise<User> {
     const { data, error } = await supabase
       .from('users')
       .insert({
         email,
         password_hash: null,
         has_password: false,
+        role
       })
       .select()
       .single();

@@ -9,12 +9,12 @@ async function testConnection() {
   try {
     // 1. Crear usuario de prueba
     console.log('1. Creating test user...');
-    const newUser = await repo.create('test@example.com');
+    const newUser = await repo.create('jhonnathan.dev@gmail.com');
     console.log('✅ User created:', newUser);
     
     // 2. Buscar por email
     console.log('\n2. Finding user by email...');
-    const foundUser = await repo.findByEmail('test@example.com');
+    const foundUser = await repo.findByEmail('jhonnathan.dev@gmail.com');
     console.log('✅ User found:', foundUser);
     
     // 3. Buscar por ID

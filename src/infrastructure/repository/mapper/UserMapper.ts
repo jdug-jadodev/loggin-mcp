@@ -8,6 +8,7 @@ export class UserMapper {
       email: entity.email,
       passwordHash: entity.password_hash,
       hasPassword: entity.has_password,
+      role: entity.role ?? 'user',
       createdAt: new Date(entity.created_at),
       updatedAt: new Date(entity.updated_at),
     };
@@ -19,6 +20,7 @@ export class UserMapper {
       email: user.email,
       password_hash: user.passwordHash,
       has_password: user.hasPassword,
+      role: user.role ?? 'user',
     };
   }
 }
