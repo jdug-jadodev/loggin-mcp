@@ -1,23 +1,25 @@
+import { CreatePasswordUseCasePort } from '../../domain/port/portin/CreatePasswordUseCasePort';
+import { CreatePasswordInputDTO } from '../dto/CreatePasswordInputDTO';
+import { CreatePasswordResultDTO } from '../dto/CreatePasswordResultDTO';
 import { UserRepositoryPort } from '../../domain/port/portout/UserRepositoryPort';
 import { validatePasswordStrength } from '../validator/PasswordValidator';
-import { isValidEmail } from '../validator/EmailValidator';
+import { isValidEmail } from '../validator/email';
 import { EmailNotFoundError } from '../exception/EmailNotFoundError';
 import { UserAlreadyHasPasswordError } from '../exception/UserAlreadyHasPasswordError';
 import { HashingError } from '../exception/HashingError';
-import { CreatePasswordResultDTO } from '../dto/CreatePasswordResultDTO';
 import { hashPassword } from '../../utils/password';
 
-export class CreatePasswordUseCase {
+export class CreatePasswordUseCase implements CreatePasswordUseCasePort {
   constructor(private readonly userRepository: UserRepositoryPort) {}
 
-  async execute(email: string, password: string): Promise<CreatePasswordResultDTO> {
-    if (!isValidEmail(email)) {
+  async execute(input: CreatePasswordInputDTO): Promise<CreatePasswordResultDTO> {
+    if (!isValidEmail(input.email)) {
       throw new Error('Invalid email format');
     }
 
-    validatePasswordStrength(password, email);
+    validatePasswordStrength(input.password, input.email);
 
-    const user = await this.userRepository.findByEmail(email);
+    const user = await this.userRepository.findByEmail(input.email);
     if (!user) {
       throw new EmailNotFoundError();
     }
@@ -27,7 +29,7 @@ export class CreatePasswordUseCase {
     }
 
     try {
-      const passwordHash = await hashPassword(password);
+      const passwordHash = await hashPassword(input.password);
       await this.userRepository.updatePassword(user.id, passwordHash);
 
       return {

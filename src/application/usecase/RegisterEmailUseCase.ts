@@ -1,13 +1,14 @@
+import { RegisterEmailUseCasePort } from '../../domain/port/portin/RegisterEmailUseCasePort';
 import { RegisterEmailInputDTO } from '../dto/RegisterEmailInputDTO';
 import { RegisterEmailResultDTO } from '../dto/RegisterEmailResultDTO';
 import { UserRepositoryPort } from '../../domain/port/portout/UserRepositoryPort';
 import { PasswordTokenRepositoryPort } from '../../domain/port/portout/PasswordTokenRepositoryPort';
 import { EmailServicePort } from '../../domain/port/portout/EmailServicePort';
-import { EmailValidator } from '../validator/EmailValidator';
+import { EmailValidator } from '../validator/email';
 import { EmailAlreadyExistsError } from '../exception/EmailAlreadyExistsError';
 import { generatePasswordCreationToken } from '../../utils/jwt';
 
-export class RegisterEmailUseCase {
+export class RegisterEmailUseCase implements RegisterEmailUseCasePort {
   constructor(
     private readonly userRepository: UserRepositoryPort,
     private readonly passwordTokenRepository: PasswordTokenRepositoryPort,

@@ -29,7 +29,7 @@ export class AuthController {
         return;
       }
 
-      const result = await this.checkEmailExistsUseCase.execute(email);
+      const result = await this.checkEmailExistsUseCase.execute({ email });
       res.status(200).json({
         status: 'success',
         exists: result.exists,
@@ -71,7 +71,7 @@ export class AuthController {
         return;
       }
 
-      const result = await this.createPasswordUseCase.execute(email, password);
+      const result = await this.createPasswordUseCase.execute({ email, password });
       res.status(201).json({
         status: 'success',
         userId: result.userId,
@@ -134,7 +134,7 @@ export class AuthController {
         return;
       }
 
-      const result = await this.loginUseCase.execute(email, password);
+      const result = await this.loginUseCase.execute({ email, password });
       res.status(200).json({
         status: 'success',
         token: result.token,
