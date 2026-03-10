@@ -9,28 +9,37 @@ import { adminMiddleware } from '../middleware/admin.middleware';
 import { ResendEmailAdapter } from '../email/adapter/ResendEmailAdapter';
 import { SupabasePasswordTokenRepositoryAdapter } from '../repository/adapter/SupabasePasswordTokenRepositoryAdapter';
 import { RegisterEmailUseCase } from '../../application/usecase/RegisterEmailUseCase';
+import { ForgotPasswordUseCase } from '../../application/usecase/ForgotPasswordUseCase';
+import { ResetPasswordUseCase } from '../../application/usecase/ResetPasswordUseCase';
 
 const router = express.Router();
 
 const userRepository = new SupabaseUserRepositoryAdapter();
 const checkEmailUseCase = new CheckEmailExistsUseCase(userRepository);
-const createPasswordUseCase = new CreatePasswordUseCase(userRepository);
-const loginUseCase = new LoginUseCase(userRepository);
-
 const passwordTokenRepository = new SupabasePasswordTokenRepositoryAdapter();
 const emailService = new ResendEmailAdapter();
+
+const createPasswordUseCase = new CreatePasswordUseCase(userRepository, passwordTokenRepository);
+const loginUseCase = new LoginUseCase(userRepository);
 const registerEmailUseCase = new RegisterEmailUseCase(userRepository, passwordTokenRepository, emailService);
+
+const forgotPasswordUseCase = new ForgotPasswordUseCase(userRepository, passwordTokenRepository, emailService);
+const resetPasswordUseCase = new ResetPasswordUseCase(passwordTokenRepository, userRepository);
 
 const authController = new AuthController(
   checkEmailUseCase,
   createPasswordUseCase,
   loginUseCase,
-  registerEmailUseCase
+  registerEmailUseCase,
+  forgotPasswordUseCase,
+  resetPasswordUseCase
 );
 
 router.post('/check-email', (req, res) => authController.checkEmail(req, res));
 router.post('/create-password', (req, res) => authController.createPassword(req, res));
 router.post('/login', (req, res) => authController.login(req, res));
 router.post('/register-email', authMiddleware, adminMiddleware, (req, res) => authController.registerEmail(req, res));
+router.post('/forgot-password', (req, res) => authController.forgotPassword(req, res));
+router.post('/reset-password', (req, res) => authController.resetPassword(req, res));
 
 export default router;

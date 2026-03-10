@@ -1,4 +1,5 @@
 export interface CreatePasswordInputDTO {
-  readonly email: string;
+  readonly email?: string;
   readonly password: string;
+  readonly token?: string;
 }

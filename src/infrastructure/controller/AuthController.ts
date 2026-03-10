@@ -3,6 +3,8 @@ import { CheckEmailExistsUseCasePort } from '../../domain/port/portin/CheckEmail
 import { CreatePasswordUseCasePort } from '../../domain/port/portin/CreatePasswordUseCasePort';
 import { LoginUseCasePort } from '../../domain/port/portin/LoginUseCasePort';
 import { RegisterEmailUseCase } from '../../application/usecase/RegisterEmailUseCase';
+import { ForgotPasswordUseCase } from '../../application/usecase/ForgotPasswordUseCase';
+import { ResetPasswordUseCase } from '../../application/usecase/ResetPasswordUseCase';
 import { EmailNotFoundError } from '../../application/exception/EmailNotFoundError';
 import { UserAlreadyHasPasswordError } from '../../application/exception/UserAlreadyHasPasswordError';
 import { InvalidCredentialsError } from '../../application/exception/InvalidCredentialsError';
@@ -15,7 +17,9 @@ export class AuthController {
     private readonly checkEmailExistsUseCase: CheckEmailExistsUseCasePort,
     private readonly createPasswordUseCase: CreatePasswordUseCasePort,
     private readonly loginUseCase: LoginUseCasePort,
-    private readonly registerEmailUseCase?: RegisterEmailUseCase
+    private readonly registerEmailUseCase?: RegisterEmailUseCase,
+    private readonly forgotPasswordUseCase?: ForgotPasswordUseCase,
+    private readonly resetPasswordUseCase?: ResetPasswordUseCase
   ) {}
 
   async checkEmail(req: Request, res: Response): Promise<void> {
@@ -59,10 +63,10 @@ export class AuthController {
 
   async createPassword(req: Request, res: Response): Promise<void> {
     try {
-      const { email, password } = req.body ?? {};
+      const { email, password, token } = req.body ?? {};
       const missing: string[] = [];
-      if (!email) missing.push('email');
       if (!password) missing.push('password');
+      if (!email && !token) missing.push('email_or_token');
       if (missing.length > 0) {
         res.status(400).json({
           status: 'error',
@@ -73,7 +77,7 @@ export class AuthController {
         return;
       }
 
-      const result = await this.createPasswordUseCase.execute({ email, password });
+      const result = await this.createPasswordUseCase.execute({ email, password, token });
       res.status(201).json({
         status: 'success',
         userId: result.userId,
@@ -201,6 +205,66 @@ export class AuthController {
       }
 
       console.error('registerEmail error', error);
+      res.status(500).json({ status: 'error', message: 'Internal server error', code: 'INTERNAL_ERROR' });
+    }
+  }
+
+  async forgotPassword(req: Request, res: Response): Promise<void> {
+    try {
+      if (!this.forgotPasswordUseCase) {
+        res.status(500).json({ status: 'error', message: 'ForgotPasswordUseCase not configured', code: 'INTERNAL_ERROR' });
+        return;
+      }
+
+      const { email } = req.body ?? {};
+      if (!email) {
+        res.status(400).json({ status: 'error', message: 'Missing required field: email', code: 'MISSING_FIELD' });
+        return;
+      }
+
+      const result = await this.forgotPasswordUseCase.execute({ email });
+      res.status(200).json({ status: 'success', message: result.message, emailSent: result.emailSent });
+    } catch (error) {
+      console.error('forgotPassword error', error);
+      res.status(500).json({ status: 'error', message: 'Internal server error', code: 'INTERNAL_ERROR' });
+    }
+  }
+
+  async resetPassword(req: Request, res: Response): Promise<void> {
+    try {
+      if (!this.resetPasswordUseCase) {
+        res.status(500).json({ status: 'error', message: 'ResetPasswordUseCase not configured', code: 'INTERNAL_ERROR' });
+        return;
+      }
+
+      const { token, newPassword } = req.body ?? {};
+      const missing: string[] = [];
+      if (!token) missing.push('token');
+      if (!newPassword) missing.push('newPassword');
+      if (missing.length > 0) {
+        res.status(400).json({ status: 'error', message: `Missing required field(s): ${missing.join(', ')}`, code: 'MISSING_FIELDS' });
+        return;
+      }
+
+      const result = await this.resetPasswordUseCase.execute({ token, newPassword });
+      res.status(200).json({ status: 'success', message: result.message });
+    } catch (error) {
+      if ((error as any).name === 'TokenExpiredError' || (error as any).name === 'TokenNotFoundError') {
+        res.status(400).json({ status: 'error', message: 'Token invalid or expired', code: 'INVALID_TOKEN' });
+        return;
+      }
+
+      if ((error as any).name === 'TokenAlreadyUsedError') {
+        res.status(400).json({ status: 'error', message: 'Token already used', code: 'TOKEN_ALREADY_USED' });
+        return;
+      }
+
+      if ((error as any).name === 'WeakPasswordError') {
+        res.status(400).json({ status: 'error', message: (error as Error).message || 'Weak password', code: 'WEAK_PASSWORD' });
+        return;
+      }
+
+      console.error('resetPassword error', error);
       res.status(500).json({ status: 'error', message: 'Internal server error', code: 'INTERNAL_ERROR' });
     }
   }
