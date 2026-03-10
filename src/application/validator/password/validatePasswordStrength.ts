@@ -1,4 +1,4 @@
-import { WeakPasswordError } from '../exception/WeakPasswordError';
+import { WeakPasswordError } from '../../exception/WeakPasswordError';
 
 export function validatePasswordStrength(password: string, email?: string): void {
   if (!password || typeof password !== 'string') {

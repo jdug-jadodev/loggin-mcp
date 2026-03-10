@@ -2,7 +2,7 @@ import { CreatePasswordUseCasePort } from '../../domain/port/portin/CreatePasswo
 import { CreatePasswordInputDTO } from '../dto/CreatePasswordInputDTO';
 import { CreatePasswordResultDTO } from '../dto/CreatePasswordResultDTO';
 import { UserRepositoryPort } from '../../domain/port/portout/UserRepositoryPort';
-import { validatePasswordStrength } from '../validator/PasswordValidator';
+import { validatePasswordStrength } from '../validator/password';
 import { isValidEmail } from '../validator/email';
 import { EmailNotFoundError } from '../exception/EmailNotFoundError';
 import { UserAlreadyHasPasswordError } from '../exception/UserAlreadyHasPasswordError';

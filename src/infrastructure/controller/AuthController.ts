@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
-import { CheckEmailExistsUseCase } from '../../application/usecase/CheckEmailExistsUseCase';
-import { CreatePasswordUseCase } from '../../application/usecase/CreatePasswordUseCase';
-import { LoginUseCase } from '../../application/usecase/LoginUseCase';
+import { CheckEmailExistsUseCasePort } from '../../domain/port/portin/CheckEmailExistsUseCasePort';
+import { CreatePasswordUseCasePort } from '../../domain/port/portin/CreatePasswordUseCasePort';
+import { LoginUseCasePort } from '../../domain/port/portin/LoginUseCasePort';
 import { EmailNotFoundError } from '../../application/exception/EmailNotFoundError';
 import { UserAlreadyHasPasswordError } from '../../application/exception/UserAlreadyHasPasswordError';
 import { InvalidCredentialsError } from '../../application/exception/InvalidCredentialsError';
@@ -11,9 +11,9 @@ import { TokenGenerationError } from '../../application/exception/TokenGeneratio
 
 export class AuthController {
   constructor(
-    private readonly checkEmailExistsUseCase: CheckEmailExistsUseCase,
-    private readonly createPasswordUseCase: CreatePasswordUseCase,
-    private readonly loginUseCase: LoginUseCase
+    private readonly checkEmailExistsUseCase: CheckEmailExistsUseCasePort,
+    private readonly createPasswordUseCase: CreatePasswordUseCasePort,
+    private readonly loginUseCase: LoginUseCasePort
   ) {}
 
   async checkEmail(req: Request, res: Response): Promise<void> {

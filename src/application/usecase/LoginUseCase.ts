@@ -6,7 +6,7 @@ import { comparePassword } from '../../utils/password';
 import { generateToken } from '../../utils/jwt';
 import { InvalidCredentialsError } from '../exception/InvalidCredentialsError';
 import { isValidEmail } from '../validator/email';
-import { toLoginResultDTO } from '../mapper/UserApplicationMapper';
+import { toLoginResultDTO } from '../mapper/user';
 
 const DUMMY_HASH = '$2b$10$abcdefghijklmnopqrstuvABCDEFGHIJKLmnopqrstuv';
 

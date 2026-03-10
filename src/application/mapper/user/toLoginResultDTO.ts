@@ -1,5 +1,5 @@
-import { User } from '../../domain/entity/User';
-import { LoginResultDTO } from '../dto/LoginResultDTO';
+import { User } from '../../../domain/entity/User';
+import { LoginResultDTO } from '../../dto/LoginResultDTO';
 
 export function toLoginResultDTO(user: User, token: string): LoginResultDTO {
   return {
