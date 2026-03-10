@@ -1,3 +1,20 @@
+export function passwordCreationTemplate(email: string, url: string): string {
+  return `
+  <html>
+    <body style="font-family: Arial, sans-serif; color: #111;">
+      <h2>Bienvenido</h2>
+      <p>Hola ${email},</p>
+      <p>Para crear tu contraseña, haz clic en el siguiente botón. El enlace expira en 24 horas.</p>
+      <p><a href="${url}" style="background:#0069d9;color:#fff;padding:10px 16px;text-decoration:none;border-radius:6px;">Crear contraseña</a></p>
+      <p>Si no solicitaste esto, ignora este correo.</p>
+      <hr />
+      <small>Si el botón no funciona, copia y pega esta URL en tu navegador: ${url}</small>
+    </body>
+  </html>
+  `;
+}
+
+export default passwordCreationTemplate;
 export const creationTemplate = (email: string, url: string) => `
 <html>
   <body style="font-family:Arial,Helvetica,sans-serif;line-height:1.4;color:#222;">

@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { CheckEmailExistsUseCasePort } from '../../domain/port/portin/CheckEmailExistsUseCasePort';
 import { CreatePasswordUseCasePort } from '../../domain/port/portin/CreatePasswordUseCasePort';
 import { LoginUseCasePort } from '../../domain/port/portin/LoginUseCasePort';
+import { RegisterEmailUseCase } from '../../application/usecase/RegisterEmailUseCase';
 import { EmailNotFoundError } from '../../application/exception/EmailNotFoundError';
 import { UserAlreadyHasPasswordError } from '../../application/exception/UserAlreadyHasPasswordError';
 import { InvalidCredentialsError } from '../../application/exception/InvalidCredentialsError';
@@ -13,7 +14,8 @@ export class AuthController {
   constructor(
     private readonly checkEmailExistsUseCase: CheckEmailExistsUseCasePort,
     private readonly createPasswordUseCase: CreatePasswordUseCasePort,
-    private readonly loginUseCase: LoginUseCasePort
+    private readonly loginUseCase: LoginUseCasePort,
+    private readonly registerEmailUseCase?: RegisterEmailUseCase
   ) {}
 
   async checkEmail(req: Request, res: Response): Promise<void> {
@@ -167,6 +169,39 @@ export class AuthController {
           timestamp: new Date().toISOString()
         });
       }
+    }
+  }
+
+  async registerEmail(req: Request, res: Response): Promise<void> {
+    try {
+      if (!this.registerEmailUseCase) {
+        res.status(500).json({ status: 'error', message: 'RegisterEmailUseCase not configured', code: 'INTERNAL_ERROR' });
+        return;
+      }
+
+      const { email } = req.body ?? {};
+      if (!email) {
+        res.status(400).json({ status: 'error', message: 'Missing required field: email', code: 'MISSING_FIELD' });
+        return;
+      }
+
+      const result = await this.registerEmailUseCase.execute({ email });
+      res.status(201).json({ status: 'success', ...result });
+    } catch (error) {
+      // Email already exists
+      if (error && (error as any).name === 'EmailAlreadyExistsError') {
+        res.status(409).json({ status: 'error', message: (error as any).message, code: 'EMAIL_ALREADY_EXISTS' });
+        return;
+      }
+
+      if (error && (error as any).name === 'EmailSendError') {
+        // user created but email failed
+        res.status(201).json({ status: 'warning', message: 'User created but email sending failed', code: 'EMAIL_SEND_FAILED' });
+        return;
+      }
+
+      console.error('registerEmail error', error);
+      res.status(500).json({ status: 'error', message: 'Internal server error', code: 'INTERNAL_ERROR' });
     }
   }
 }

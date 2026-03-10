@@ -1,68 +1,49 @@
-import { RegisterEmailUseCasePort } from '../../domain/port/portin/RegisterEmailUseCasePort';
 import { RegisterEmailInputDTO } from '../dto/RegisterEmailInputDTO';
 import { RegisterEmailResultDTO } from '../dto/RegisterEmailResultDTO';
 import { UserRepositoryPort } from '../../domain/port/portout/UserRepositoryPort';
 import { PasswordTokenRepositoryPort } from '../../domain/port/portout/PasswordTokenRepositoryPort';
 import { EmailServicePort } from '../../domain/port/portout/EmailServicePort';
-import { EmailValidator } from '../validator/email';
+import { validateEmailOrThrow } from '../validator/email/validateEmailOrThrow';
 import { EmailAlreadyExistsError } from '../exception/EmailAlreadyExistsError';
+import { EmailSendError } from '../exception/EmailSendError';
 import { generatePasswordCreationToken } from '../../utils/jwt';
 
-export class RegisterEmailUseCase implements RegisterEmailUseCasePort {
+export class RegisterEmailUseCase {
   constructor(
     private readonly userRepository: UserRepositoryPort,
     private readonly passwordTokenRepository: PasswordTokenRepositoryPort,
-    private readonly emailService: EmailServicePort,
-    private readonly emailValidator: EmailValidator
+    private readonly emailService: EmailServicePort
   ) {}
 
-  async execute(input: RegisterEmailInputDTO): Promise<RegisterEmailResultDTO> {
-    // 1. Validar email
-    const email = input.email.toLowerCase().trim();
-    this.emailValidator.validate(email);
+  async execute(dto: RegisterEmailInputDTO): Promise<RegisterEmailResultDTO> {
+    validateEmailOrThrow(dto.email);
 
-    // 2. Verificar que email NO existe
-    const existingUser = await this.userRepository.findByEmail(email);
-    if (existingUser) {
-      throw new EmailAlreadyExistsError(email);
+    const existing = await this.userRepository.findByEmail(dto.email);
+    if (existing) {
+      throw new EmailAlreadyExistsError(dto.email);
     }
 
-    // 3. Crear usuario en BD
-    const user = await this.userRepository.create(email);
+    const user = await this.userRepository.create(dto.email, 'user');
 
-    // 4. Generar token JWT con jti único
     const token = generatePasswordCreationToken(user.id, user.email);
-
-    // 5. Calcular expiración (24 horas)
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-    // 6. Persistir token en BD
-    await this.passwordTokenRepository.createToken(
-      user.id,
-      token,
-      'password_creation',
-      expiresAt
-    );
+    await this.passwordTokenRepository.createToken(user.id, token, 'password_creation', expiresAt);
 
-    // 7. Intentar enviar email (sin fallar si hay error)
     let emailSent = true;
-    let message = 'User registered successfully. Password creation email sent.';
-
     try {
       await this.emailService.sendPasswordCreationEmail(user.email, token);
-    } catch (error) {
+    } catch (err) {
       emailSent = false;
-      message = 'User registered but email failed to send. Admin can resend token manually.';
-      // Log error pero no lanzar excepción
-      console.error('Failed to send password creation email:', error);
+      throw new EmailSendError((err as Error).message);
     }
 
-    // 8. Retornar resultado
     return {
       userId: user.id,
       email: user.email,
-      message,
+      message: 'User created and email sent',
       emailSent
     };
   }
 }
+export default RegisterEmailUseCase;

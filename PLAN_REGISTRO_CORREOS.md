@@ -423,8 +423,8 @@ Pasos del caso de uso:
 ```typescript
 router.post(
   '/register-email',
-  authMiddleware,     // Valida JWT
-  adminMiddleware,    // Valida rol admin
+  authMiddleware,
+  adminMiddleware,
   (req, res) => authController.registerEmail(req, res)
 );
 ```
