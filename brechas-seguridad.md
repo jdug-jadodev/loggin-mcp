@@ -1,101 +1,375 @@
-# Informe de Análisis de Seguridad
+# Informe de Seguridad — Checkmarx-Aligned
 
+**Fecha de análisis:** 10 de marzo de 2026  
+**Versión del informe:** 1.0.0  
 **Proyecto:** loggin-mcp  
-**Fecha:** 10 de Marzo de 2026  
-**Versión:** 1.0.0  
-**Auditor:** GitHub Copilot  
-**Estándares:** OWASP Top 10, CWE, ISO 27001, PCI DSS
+**Analista:** Auditoría Automatizada
 
 ---
 
-## 📊 Resumen Ejecutivo
+## 1. Resumen Ejecutivo
 
-### Stack Tecnológico
-| Componente | Tecnología |
-|------------|------------|
-| Runtime | Node.js |
-| Framework | Express 4.18.2 |
-| Lenguaje | TypeScript 5.3.3 |
-| Base de datos | Supabase (PostgreSQL) |
-| Autenticación | JWT (jsonwebtoken 9.0.3) |
-| Hashing | bcrypt 6.0.0 |
-| Email | Resend 6.9.3 |
+### Tecnologías y Lenguajes Detectados
+| Tecnología | Versión | Uso |
+|------------|---------|-----|
+| Node.js | 20.x | Runtime |
+| TypeScript | 5.3.3 | Lenguaje principal |
+| Express.js | 4.18.2 | Framework HTTP |
+| Supabase | 2.98.0 | Base de datos (PostgreSQL) |
+| JWT (jsonwebtoken) | 9.0.3 | Autenticación |
+| bcrypt | 6.0.0 | Hashing de contraseñas |
+| Resend | 6.9.3 | Servicio de email |
 
-### Score de Seguridad
+### Score de Seguridad Global
 
-| Categoría | Estado |
-|-----------|--------|
-| **Score General** | 🟡 **65/100** |
-| Dependencias | ✅ Sin vulnerabilidades conocidas |
-| Autenticación | 🟡 Mejorable |
-| Configuración | 🔴 Requiere atención |
-| Infraestructura | 🟡 Mejorable |
+| Métrica | Valor |
+|---------|-------|
+| **Score Global** | **62/100** |
+| Riesgo General | MEDIO-ALTO |
 
-### Resumen de Vulnerabilidades
+### Conteo de Vulnerabilidades por Severidad
 
-| Severidad | Cantidad |
-|-----------|----------|
-| 🔴 Crítica | 3 |
-| 🟠 Alta | 4 |
-| 🟡 Media | 5 |
-| 🟢 Baja | 3 |
-| **Total** | **15** |
+| Severidad | Cantidad | Estado |
+|-----------|----------|--------|
+| 🔴 CRÍTICA | 1 | To Verify |
+| 🟠 ALTA | 4 | To Verify |
+| 🟡 MEDIA | 4 | To Verify |
+| 🟢 BAJA | 3 | INFO |
+| ℹ️ INFO | 3 | INFO |
+| **TOTAL** | **15** | — |
+
+### Scanners Aplicados
+- ✅ SAST (Static Application Security Testing)
+- ✅ SCA (Software Composition Analysis)
+- ⚠️ IaC (Infrastructure as Code) — Parcial (sin Docker/K8s)
+- ✅ Secrets Detection
+
+### Frameworks de Compliance Evaluados
+- OWASP Top 10 2021
+- SANS/CWE Top 25
+- PCI DSS (parcial)
+- NIST SP 800-53 (parcial)
 
 ---
 
-## 🔴 Vulnerabilidades Críticas
+## 2. Tabla de Vulnerabilidades
 
-### 1. Ausencia de Rate Limiting
-| Campo | Valor |
-|-------|-------|
-| **Severidad** | 🔴 Crítica |
-| **CWE** | CWE-307 (Improper Restriction of Excessive Authentication Attempts) |
-| **OWASP** | A07:2021 – Identification and Authentication Failures |
-| **Ubicación** | [src/index.ts](src/index.ts) |
-| **Descripción** | La API no tiene limitación de peticiones por IP/usuario, permitiendo ataques de fuerza bruta en endpoints de autenticación. |
-| **Impacto** | Un atacante puede realizar intentos ilimitados de login, comprometiendo cuentas con contraseñas débiles. |
-| **Remediación** | Implementar `express-rate-limit` con límites estrictos: máx. 5 intentos de login por minuto, 3 intentos de forgot-password por hora. |
-| **Esfuerzo** | 🟢 Bajo (2-4 horas) |
+| # | Severidad | Scanner | Tipo | Ubicación | CWE/CVE | OWASP | Estado | Descripción | Flujo de datos | BFL | Remediación | Esfuerzo |
+|---|-----------|---------|------|-----------|---------|-------|--------|-------------|----------------|-----|-------------|----------|
+| 1 | 🔴 CRÍTICA | Secrets | Credenciales Expuestas | [.env](.env#L16-L24) | CWE-798 | A07:2021 | **Urgent** | API keys de producción hardcodeadas en archivo .env local | N/A | [.env](.env) | Rotar inmediatamente SUPABASE_KEY y RESEND_API_KEY. Usar secrets manager. | 1-2h |
+| 2 | 🟠 ALTA | SAST | XSS en Email | [password-creation.template.ts](src/infrastructure/email/templates/password-creation.template.ts#L5-L7) | CWE-79 | A03:2021 | To Verify | Email interpolado sin sanitizar en template HTML | `email` (input) → `${email}` (template) → Email HTML (sink) | [password-creation.template.ts](src/infrastructure/email/templates/password-creation.template.ts#L6) | Implementar escape HTML para el parámetro email | 30min |
+| 3 | 🟠 ALTA | SAST | XSS en Email | [password-reset.template.ts](src/infrastructure/email/templates/password-reset.template.ts#L6) | CWE-79 | A03:2021 | To Verify | Email interpolado sin sanitizar en template de reset | `email` (input) → `${email}` (template) → Email HTML (sink) | [password-reset.template.ts](src/infrastructure/email/templates/password-reset.template.ts#L6) | Implementar escape HTML para el parámetro email | 30min |
+| 4 | 🟠 ALTA | SAST | Missing Rate Limiting | [auth.routes.ts](src/infrastructure/routes/auth.routes.ts#L37-L42) | CWE-307 | A07:2021 | To Verify | Sin rate limiting en endpoints de autenticación (/login, /forgot-password) | Request HTTP → Express Router → Auth Controller (sink) | [index.ts](src/index.ts#L14) | Implementar express-rate-limit en rutas de auth | 2h |
+| 5 | 🟠 ALTA | SAST | CORS Permisivo | [index.ts](src/index.ts#L14) | CWE-942 | A05:2021 | To Verify | CORS configurado sin restricciones (wildcard *) | Request → cors() middleware → Response | [index.ts](src/index.ts#L14) | Configurar whitelist de orígenes permitidos | 1h |
+| 6 | 🟡 MEDIA | SAST | RLS Policy Insegura | [setup-database.sql](src/utils/scripts/setup-database.sql#L28-L30) | CWE-284 | A01:2021 | To Verify | Política RLS "Allow all operations for now" permite acceso total | Query SQL → RLS Policy → Data (sink) | [setup-database.sql](src/utils/scripts/setup-database.sql#L30) | Implementar políticas RLS granulares por rol | 4h |
+| 7 | 🟡 MEDIA | SAST | Missing Security Headers | [index.ts](src/index.ts#L10-L14) | CWE-693 | A05:2021 | To Verify | Sin headers de seguridad (CSP, X-Frame-Options, etc.) | Request HTTP → Express App → Response (sin headers) | [index.ts](src/index.ts#L12) | Agregar helmet.js middleware | 1h |
+| 8 | 🟡 MEDIA | SAST | Información en Logs | [AuthController.ts](src/infrastructure/controller/AuthController.ts#L210) | CWE-532 | A09:2021 | To Verify | Console.error expone detalles de errores en producción | Error → console.error() → Logs (sink) | [AuthController.ts](src/infrastructure/controller/AuthController.ts) | Usar logger con niveles apropiados para producción | 2h |
+| 9 | 🟡 MEDIA | SAST | Password Policy Débil | [validatePasswordStrength.ts](src/application/validator/password/validatePasswordStrength.ts#L1-L32) | CWE-521 | A07:2021 | To Verify | No requiere caracteres especiales en contraseñas | password (input) → validatePasswordStrength() (sink) | [validatePasswordStrength.ts](src/application/validator/password/validatePasswordStrength.ts#L26) | Agregar validación de caracteres especiales | 30min |
+| 10 | 🟢 BAJA | SAST | JWT Expiration Largo | [generateToken.ts](src/utils/jwt/generateToken.ts#L4) | CWE-613 | A07:2021 | INFO | Token JWT con expiración de 15h (potencialmente largo) | jwt.sign() → token (15h TTL) | [generateToken.ts](src/utils/jwt/generateToken.ts#L4) | Reducir a 1-4h y usar refresh tokens | 4h |
+| 11 | 🟢 BAJA | SAST | Missing Account Lockout | [LoginUseCase.ts](src/application/usecase/LoginUseCase.ts) | CWE-307 | A07:2021 | INFO | Sin bloqueo de cuenta tras múltiples intentos fallidos | Login attempt → LoginUseCase → Response | [LoginUseCase.ts](src/application/usecase/LoginUseCase.ts) | Implementar contador de intentos fallidos | 4h |
+| 12 | 🟢 BAJA | SAST | No HTTPS Redirect | [index.ts](src/index.ts) | CWE-319 | A02:2021 | INFO | Sin redirección HTTP → HTTPS | HTTP Request → Express → Response (sin redirect) | [index.ts](src/index.ts) | Agregar middleware de redirección HTTPS | 30min |
+| 13 | ℹ️ INFO | SAST | Timing Attack en Login | [LoginUseCase.ts](src/application/usecase/LoginUseCase.ts#L14) | CWE-208 | A07:2021 | Not Exploitable | Uso de DUMMY_HASH mitiga timing attack — correctamente implementado | N/A | N/A | ✅ Ya mitigado | N/A |
+| 14 | ℹ️ INFO | SAST | Validación de Email | [isValidEmail.ts](src/application/validator/email/isValidEmail.ts#L3) | CWE-20 | A03:2021 | INFO | Regex de email básica pero funcional | N/A | N/A | Considerar librería dedicada (validator.js) | 1h |
+| 15 | ℹ️ INFO | SCA | Dependencias Desactualizadas | [package.json](package.json) | N/A | A06:2021 | INFO | Algunas dependencias tienen versiones nuevas disponibles | N/A | [package.json](package.json) | Actualizar a versiones más recientes | 1h |
 
-```typescript
-// Solución recomendada
-import rateLimit from 'express-rate-limit';
+---
 
-const loginLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minuto
-  max: 5, // 5 intentos
-  message: { status: 'error', message: 'Too many login attempts', code: 'RATE_LIMITED' },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
+## 3. Cobertura por Framework de Compliance
 
-const forgotPasswordLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hora
-  max: 3,
-  message: { status: 'error', message: 'Too many requests', code: 'RATE_LIMITED' },
-});
+### OWASP Top 10 2021
 
-router.post('/login', loginLimiter, (req, res) => authController.login(req, res));
-router.post('/forgot-password', forgotPasswordLimiter, (req, res) => authController.forgotPassword(req, res));
+| Categoría | Descripción | Hallazgos | Estado |
+|-----------|-------------|-----------|--------|
+| A01:2021 | Broken Access Control | #6 (RLS Policy) | ⚠️ Parcial |
+| A02:2021 | Cryptographic Failures | #12 (HTTPS) | ⚠️ Parcial |
+| A03:2021 | Injection (XSS) | #2, #3 (Email XSS) | ❌ No cumple |
+| A04:2021 | Insecure Design | Ninguno | ✅ Cumple |
+| A05:2021 | Security Misconfiguration | #5, #7 (CORS, Headers) | ❌ No cumple |
+| A06:2021 | Vulnerable Components | #15 (Outdated deps) | ⚠️ Parcial |
+| A07:2021 | Auth Failures | #1, #4, #9, #10, #11 | ❌ No cumple |
+| A08:2021 | Data Integrity Failures | Ninguno | ✅ Cumple |
+| A09:2021 | Security Logging | #8 (Logs) | ⚠️ Parcial |
+| A10:2021 | SSRF | No aplica | ✅ N/A |
+
+### SANS/CWE Top 25
+
+| CWE | Nombre | Presente | Severidad |
+|-----|--------|----------|-----------|
+| CWE-79 | XSS | ✅ #2, #3 | Alta |
+| CWE-798 | Hardcoded Credentials | ✅ #1 | Crítica |
+| CWE-307 | Improper Auth Restriction | ✅ #4, #11 | Alta/Baja |
+| CWE-284 | Improper Access Control | ✅ #6 | Media |
+| CWE-532 | Info Exposure in Logs | ✅ #8 | Media |
+| CWE-521 | Weak Password Requirements | ✅ #9 | Media |
+| CWE-613 | Insufficient Session Expiration | ✅ #10 | Baja |
+| CWE-942 | Overly Permissive CORS | ✅ #5 | Alta |
+
+### PCI DSS (Aplicable si maneja pagos)
+
+| Requisito | Descripción | Estado |
+|-----------|-------------|--------|
+| 6.5.1 | Injection flaws | ⚠️ Parcial (XSS presente) |
+| 6.5.7 | XSS | ❌ No cumple |
+| 6.5.10 | Broken Authentication | ⚠️ Parcial |
+| 8.2.3 | Password complexity | ⚠️ Parcial |
+| 8.2.4 | Password rotation | ℹ️ N/A |
+
+### NIST SP 800-53
+
+| Control | Descripción | Estado |
+|---------|-------------|--------|
+| AC-2 | Account Management | ⚠️ Parcial |
+| AC-3 | Access Enforcement | ⚠️ Parcial (#6) |
+| IA-5 | Authenticator Management | ⚠️ Parcial (#9) |
+| SC-8 | Transmission Confidentiality | ⚠️ Parcial (#12) |
+| SC-28 | Protection at Rest | ✅ Cumple (bcrypt) |
+
+---
+
+## 4. Dependencias con Riesgo (SCA)
+
+### Análisis de Vulnerabilidades CVE
+
+| Paquete | Versión Actual | CVEs Conocidos | CVSS | Versión Segura | Estado |
+|---------|----------------|----------------|------|----------------|--------|
+| express | 4.18.2 | Ninguno | N/A | 4.18.2+ | ✅ Seguro |
+| jsonwebtoken | 9.0.3 | Ninguno | N/A | 9.0.0+ | ✅ Seguro |
+| bcrypt | 6.0.0 | Ninguno | N/A | 5.0.0+ | ✅ Seguro |
+| @supabase/supabase-js | 2.98.0 | Ninguno | N/A | 2.98.0+ | ✅ Seguro |
+| cors | 2.8.5 | Ninguno | N/A | 2.8.5 | ✅ Seguro |
+| dotenv | 16.3.1 | Ninguno | N/A | 16.0.0+ | ✅ Seguro |
+| resend | 6.9.3 | Ninguno | N/A | 6.0.0+ | ✅ Seguro |
+
+**Result: npm audit found 0 vulnerabilities**
+
+### Dependencias Desactualizadas
+
+| Paquete | Versión Actual | Versión Latest | Riesgo |
+|---------|----------------|----------------|--------|
+| @supabase/supabase-js | 2.98.0 | 2.99.0 | Bajo |
+| @types/bcrypt | 5.0.2 | 6.0.0 | Bajo |
+| @types/express | 4.17.21 | 5.0.6 | Bajo |
+| @types/node | 20.10.6 | 25.4.0 | Bajo |
+| dotenv | 16.3.1 | 17.3.1 | Bajo |
+| express | 4.18.2 | 5.2.1 | Medio (major) |
+
+### Riesgo de Licencias
+
+| Paquete | Licencia | Compatibilidad | Riesgo |
+|---------|----------|----------------|--------|
+| express | MIT | ✅ Compatible | Ninguno |
+| jsonwebtoken | MIT | ✅ Compatible | Ninguno |
+| bcrypt | MIT | ✅ Compatible | Ninguno |
+| @supabase/supabase-js | MIT | ✅ Compatible | Ninguno |
+| resend | MIT | ✅ Compatible | Ninguno |
+
+**Riesgo de Supply Chain:** BAJO  
+Todas las dependencias provienen de fuentes confiables (npm registry oficial).
+
+---
+
+## 5. Secretos y Credenciales Expuestas
+
+| # | Tipo | Archivo | Línea | Riesgo | Acción Requerida |
+|---|------|---------|-------|--------|------------------|
+| 1 | 🔴 Supabase Key | [.env](.env#L16) | 16 | CRÍTICO | **ROTAR INMEDIATAMENTE** - Key expuesta localmente |
+| 2 | 🔴 Resend API Key | [.env](.env#L24) | 24 | CRÍTICO | **ROTAR INMEDIATAMENTE** - Key expuesta localmente |
+| 3 | 🟡 JWT Secret | [.env](.env#L10) | 10 | MEDIO | Cambiar en producción - Valor predecible para desarrollo |
+
+### Análisis de Secretos
+
+```
+SUPABASE_KEY=sb_publishable_JgkxqnKcHXFKA0jpkjrO0g_Esv0MbS9
+```
+- **Tipo:** Supabase Anon/Public Key
+- **Riesgo:** Si es la service_role key, permite acceso total a la BD
+- **Mitigación:** Verificar que sea solo anon key (publishable)
+
+```
+RESEND_API_KEY=re_ZwewwTvj_ChBRqNxYXBY1zPbmNa8wg8wp
+```
+- **Tipo:** API Key de servicio de email
+- **Riesgo:** Permite enviar emails en nombre del dominio
+- **Mitigación:** Rotar key inmediatamente
+
+### Estado de .gitignore
+```
+✅ .env está en .gitignore
+✅ .env.local está en .gitignore
+✅ .env.production está en .gitignore
+```
+
+**Nota:** Aunque .env está ignorado, las credenciales reales no deben almacenarse en archivos locales. Usar variables de entorno del sistema o secrets manager.
+
+---
+
+## 6. Hallazgos en IaC
+
+### Archivos de Infraestructura Detectados
+
+| Tipo | Archivo | Estado |
+|------|---------|--------|
+| SQL Schema | [setup-database.sql](src/utils/scripts/setup-database.sql) | ⚠️ Con hallazgos |
+| Docker | No detectado | N/A |
+| Kubernetes | No detectado | N/A |
+| Terraform | No detectado | N/A |
+
+### Hallazgos SQL/Database
+
+| # | Recurso | Archivo | Regla Violada | Severidad | Remediación |
+|---|---------|---------|---------------|-----------|-------------|
+| 1 | RLS Policy | [setup-database.sql](src/utils/scripts/setup-database.sql#L28-L30) | Política permisiva | 🟡 MEDIA | Implementar políticas granulares |
+
+**Código problemático:**
+```sql
+-- INSEGURO: Permite todas las operaciones
+CREATE POLICY "Allow all operations for now" ON users FOR ALL USING (true);
+```
+
+**Remediación sugerida:**
+```sql
+-- Políticas RLS seguras
+CREATE POLICY "Users can read own data" ON users 
+  FOR SELECT USING (auth.uid() = id);
+
+CREATE POLICY "Users can update own data" ON users 
+  FOR UPDATE USING (auth.uid() = id);
+
+CREATE POLICY "Only admins can delete" ON users 
+  FOR DELETE USING (
+    EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin')
+  );
 ```
 
 ---
 
-### 2. CORS Completamente Abierto
-| Campo | Valor |
-|-------|-------|
-| **Severidad** | 🔴 Crítica |
-| **CWE** | CWE-942 (Permissive Cross-domain Policy with Untrusted Domains) |
-| **OWASP** | A05:2021 – Security Misconfiguration |
-| **Ubicación** | [src/index.ts#L14](src/index.ts#L14) |
-| **Descripción** | `app.use(cors())` permite peticiones desde cualquier origen, exponiendo la API a ataques CSRF desde sitios maliciosos. |
-| **Impacto** | Atacantes pueden realizar peticiones autenticadas desde sitios maliciosos si el usuario tiene sesión activa. |
-| **Remediación** | Configurar CORS con whitelist de orígenes permitidos. |
-| **Esfuerzo** | 🟢 Bajo (1-2 horas) |
+## 7. Recomendaciones Priorizadas
+
+### 🔴 Inmediato (0–7 días) — Críticas y Altas Explotables
+
+| # | Hallazgo | Acción | Responsable | Esfuerzo |
+|---|----------|--------|-------------|----------|
+| 1 | Credenciales expuestas | Rotar SUPABASE_KEY y RESEND_API_KEY | DevOps/Security | 2h |
+| 2 | XSS en templates | Sanitizar email en templates HTML | Backend | 1h |
+| 3 | Rate limiting | Implementar express-rate-limit | Backend | 2h |
+| 4 | CORS permisivo | Configurar whitelist de orígenes | Backend | 1h |
+
+### 🟠 Corto plazo (8–30 días) — Altas y Medias Confirmadas
+
+| # | Hallazgo | Acción | Responsable | Esfuerzo |
+|---|----------|--------|-------------|----------|
+| 5 | RLS Policy | Implementar políticas granulares | DBA/Backend | 4h |
+| 6 | Security Headers | Agregar helmet.js | Backend | 1h |
+| 7 | Logging seguro | Implementar winston con niveles | Backend | 2h |
+| 8 | Password policy | Agregar requisito de caracteres especiales | Backend | 30min |
+
+### 🟡 Mediano plazo (31–90 días) — Mejoras Estructurales
+
+| # | Hallazgo | Acción | Responsable | Esfuerzo |
+|---|----------|--------|-------------|----------|
+| 9 | JWT expiration | Reducir TTL e implementar refresh tokens | Backend | 4h |
+| 10 | Account lockout | Implementar bloqueo tras N intentos | Backend | 4h |
+| 11 | HTTPS redirect | Agregar middleware de redirección | DevOps | 30min |
+| 12 | Actualizar deps | Update a versiones más recientes | Backend | 1h |
+
+---
+
+## 8. Métricas de Remediación
+
+### MTTR Estimado por Severidad
+
+| Severidad | Cantidad | MTTR Estimado | Total |
+|-----------|----------|---------------|-------|
+| Crítica | 1 | 2h | 2h |
+| Alta | 4 | 1.5h promedio | 6h |
+| Media | 4 | 2h promedio | 8h |
+| Baja | 3 | 2h promedio | 6h |
+| **TOTAL** | **12** | — | **22h** |
+
+### Vulnerabilidades Recurrentes
+
+| SimilarityID | Tipo | Archivos Afectados | Vector Común |
+|--------------|------|-------------------|--------------|
+| XSS-EMAIL-001 | XSS | password-creation.template.ts, password-reset.template.ts | Interpolación directa de email en HTML |
+
+### Deuda Técnica de Seguridad
+
+| Categoría | Items | Impacto | Prioridad |
+|-----------|-------|---------|-----------|
+| Autenticación | 4 | Alto | P1 |
+| Configuración | 3 | Medio | P2 |
+| Datos | 1 | Medio | P2 |
+| Logging | 1 | Bajo | P3 |
+
+**Deuda técnica total estimada:** ~22 horas de desarrollo
+
+---
+
+## 9. Falsos Positivos Identificados
+
+| # | Tipo | Ubicación | Justificación |
+|---|------|-----------|---------------|
+| 1 | Timing Attack | [LoginUseCase.ts](src/application/usecase/LoginUseCase.ts#L14) | Uso de DUMMY_HASH previene timing attacks — implementación correcta |
+
+---
+
+## 10. Código de Remediación Sugerido
+
+### Fix #2/#3: XSS en Email Templates
 
 ```typescript
-// Solución recomendada
-const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000'];
+// src/utils/html/escapeHtml.ts
+export function escapeHtml(text: string): string {
+  const map: Record<string, string> = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;'
+  };
+  return text.replace(/[&<>"']/g, (char) => map[char]);
+}
+
+// En templates:
+import { escapeHtml } from '../../utils/html/escapeHtml';
+// ...
+<p>Hola ${escapeHtml(email)},</p>
+```
+
+### Fix #4: Rate Limiting
+
+```typescript
+// src/infrastructure/middleware/rateLimit.middleware.ts
+import rateLimit from 'express-rate-limit';
+
+export const authRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  max: 5, // 5 intentos por ventana
+  message: {
+    status: 'error',
+    message: 'Too many attempts, please try again later',
+    code: 'RATE_LIMITED'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// En auth.routes.ts:
+router.post('/login', authRateLimiter, (req, res) => authController.login(req, res));
+router.post('/forgot-password', authRateLimiter, (req, res) => authController.forgotPassword(req, res));
+```
+
+### Fix #5: CORS Configurado
+
+```typescript
+// src/index.ts
+import cors from 'cors';
+
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:5173',
+  process.env.FRONTEND_URL
+].filter(Boolean);
 
 app.use(cors({
   origin: (origin, callback) => {
@@ -105,56 +379,14 @@ app.use(cors({
       callback(new Error('Not allowed by CORS'));
     }
   },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
 }));
 ```
 
----
-
-### 3. Política RLS Permisiva en Base de Datos
-| Campo | Valor |
-|-------|-------|
-| **Severidad** | 🔴 Crítica |
-| **CWE** | CWE-284 (Improper Access Control) |
-| **OWASP** | A01:2021 – Broken Access Control |
-| **Ubicación** | [src/utils/scripts/setup-database.sql#L28](src/utils/scripts/setup-database.sql#L28) |
-| **Descripción** | La política RLS `USING (true)` efectivamente desactiva Row Level Security, permitiendo acceso a todos los registros. |
-| **Impacto** | Si se compromete SUPABASE_KEY, un atacante puede leer/modificar todos los usuarios de la base de datos. |
-| **Remediación** | Implementar políticas RLS apropiadas usando JWT claims de Supabase. |
-| **Esfuerzo** | 🟡 Medio (4-8 horas) |
-
-```sql
--- Solución recomendada
-DROP POLICY IF EXISTS "Allow all operations for now" ON users;
-
--- Políticas específicas
-CREATE POLICY "Users can read their own data" ON users
-  FOR SELECT USING (auth.uid()::text = id::text);
-
-CREATE POLICY "Service role can do everything" ON users
-  FOR ALL USING (auth.role() = 'service_role');
-```
-
----
-
-## 🟠 Vulnerabilidades Altas
-
-### 4. Ausencia de Headers de Seguridad HTTP
-| Campo | Valor |
-|-------|-------|
-| **Severidad** | 🟠 Alta |
-| **CWE** | CWE-693 (Protection Mechanism Failure) |
-| **OWASP** | A05:2021 – Security Misconfiguration |
-| **Ubicación** | [src/index.ts](src/index.ts) |
-| **Descripción** | No se implementan headers de seguridad (X-Content-Type-Options, X-Frame-Options, HSTS, CSP). |
-| **Impacto** | Exposición a clickjacking, MIME sniffing, y otros ataques basados en headers. |
-| **Remediación** | Instalar y configurar `helmet` middleware. |
-| **Esfuerzo** | 🟢 Bajo (1 hora) |
+### Fix #7: Security Headers
 
 ```typescript
-// Solución recomendada
+// src/index.ts
 import helmet from 'helmet';
 
 app.use(helmet({
@@ -163,353 +395,32 @@ app.use(helmet({
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
-    },
+    }
   },
-  hsts: { maxAge: 31536000, includeSubDomains: true },
+  crossOriginEmbedderPolicy: true,
+  crossOriginOpenerPolicy: true,
+  crossOriginResourcePolicy: { policy: "same-site" },
+  hsts: { maxAge: 31536000, includeSubDomains: true }
 }));
 ```
 
----
-
-### 5. Sin Validación de Caracteres Especiales en Contraseñas
-| Campo | Valor |
-|-------|-------|
-| **Severidad** | 🟠 Alta |
-| **CWE** | CWE-521 (Weak Password Requirements) |
-| **OWASP** | A07:2021 – Identification and Authentication Failures |
-| **Ubicación** | [src/application/validator/password/validatePasswordStrength.ts](src/application/validator/password/validatePasswordStrength.ts) |
-| **Descripción** | La política de contraseñas no requiere caracteres especiales, reduciendo la entropía. |
-| **Impacto** | Contraseñas más vulnerables a ataques de diccionario y rainbow tables. |
-| **Remediación** | Agregar validación de caracteres especiales. |
-| **Esfuerzo** | 🟢 Bajo (30 minutos) |
+### Fix #9: Password con Caracteres Especiales
 
 ```typescript
-// Agregar en validatePasswordStrength.ts
-if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(trimmed)) {
-  throw new WeakPasswordError('Password must contain at least one special character');
+// En validatePasswordStrength.ts agregar:
+if (!/[!@#$%^&*(),.?":{}|<>]/.test(trimmed)) {
+  throw new WeakPasswordError('Password must contain at least one special character (!@#$%^&*(),.?":{}|<>)');
 }
 ```
 
 ---
 
-### 6. Bloqueo de Cuenta No Implementado
-| Campo | Valor |
-|-------|-------|
-| **Severidad** | 🟠 Alta |
-| **CWE** | CWE-307 (Improper Restriction of Excessive Authentication Attempts) |
-| **OWASP** | A07:2021 – Identification and Authentication Failures |
-| **Ubicación** | [src/application/usecase/LoginUseCase.ts](src/application/usecase/LoginUseCase.ts) |
-| **Descripción** | No hay mecanismo para bloquear cuentas después de múltiples intentos fallidos. |
-| **Impacto** | Permite intentos de fuerza bruta indefinidos contra cuentas específicas. |
-| **Remediación** | Implementar contador de intentos fallidos con bloqueo temporal. |
-| **Esfuerzo** | 🟡 Medio (4-6 horas) |
+## Historial de Cambios
+
+| Fecha | Versión | Autor | Resumen |
+|-------|---------|-------|---------|
+| 2026-03-10 | 1.0.0 | Auditoría Automatizada | Creación inicial del informe. 15 hallazgos identificados: 1 crítico, 4 altos, 4 medios, 3 bajos, 3 informativos. |
 
 ---
 
-### 7. Tokens Expuestos en URLs
-| Campo | Valor |
-|-------|-------|
-| **Severidad** | 🟠 Alta |
-| **CWE** | CWE-598 (Information Exposure Through Query Strings in GET Request) |
-| **OWASP** | A04:2021 – Insecure Design |
-| **Ubicación** | [src/infrastructure/email/adapter/ResendEmailAdapter.ts#L16](src/infrastructure/email/adapter/ResendEmailAdapter.ts#L16) |
-| **Descripción** | Los tokens de password reset/creation se envían como query parameters en URLs. |
-| **Impacto** | Tokens pueden filtrarse en logs de servidor, historial de navegador, y headers Referer. |
-| **Remediación** | Usar tokens cortos de un solo uso que redireccionen a página segura. |
-| **Esfuerzo** | 🟡 Medio (4-6 horas) |
-
----
-
-## 🟡 Vulnerabilidades Medias
-
-### 8. Expiración de Token de Login Prolongada
-| Campo | Valor |
-|-------|-------|
-| **Severidad** | 🟡 Media |
-| **CWE** | CWE-613 (Insufficient Session Expiration) |
-| **OWASP** | A07:2021 – Identification and Authentication Failures |
-| **Ubicación** | [src/utils/jwt/generateToken.ts#L4](src/utils/jwt/generateToken.ts#L4) |
-| **Descripción** | Tokens JWT expiran en 15 horas, tiempo excesivo para aplicaciones sensibles. |
-| **Impacto** | Tokens robados permanecen válidos por tiempo prolongado. |
-| **Remediación** | Reducir a 1-2 horas + implementar refresh tokens. |
-| **Esfuerzo** | 🟡 Medio (6-8 horas) |
-
----
-
-### 9. Sin Mecanismo de Refresh Token
-| Campo | Valor |
-|-------|-------|
-| **Severidad** | 🟡 Media |
-| **CWE** | CWE-613 (Insufficient Session Expiration) |
-| **Ubicación** | Arquitectura general |
-| **Descripción** | No existe mecanismo de refresh token, forzando re-login frecuente o tokens de larga duración. |
-| **Remediación** | Implementar estrategia de access token (corto) + refresh token (rotativo). |
-| **Esfuerzo** | 🔴 Alto (8-16 horas) |
-
----
-
-### 10. Logging de Información Sensible
-| Campo | Valor |
-|-------|-------|
-| **Severidad** | 🟡 Media |
-| **CWE** | CWE-532 (Information Exposure Through Log Files) |
-| **Ubicación** | Múltiples archivos con `console.error` |
-| **Descripción** | Uso de console.log/console.error puede exponer información sensible en producción. |
-| **Remediación** | Implementar logger estructurado (winston/pino) con niveles apropiados. |
-| **Esfuerzo** | 🟡 Medio (4-6 horas) |
-
----
-
-### 11. Sin Validación de Tamaño por Endpoint
-| Campo | Valor |
-|-------|-------|
-| **Severidad** | 🟡 Media |
-| **CWE** | CWE-400 (Uncontrolled Resource Consumption) |
-| **Ubicación** | [src/index.ts#L13](src/index.ts#L13) |
-| **Descripción** | Límite global de 10MB es excesivo para endpoints de autenticación. |
-| **Remediación** | Aplicar límites específicos por ruta (ej: 1KB para login). |
-| **Esfuerzo** | 🟢 Bajo (1-2 horas) |
-
----
-
-### 12. Sin Sanitización de Input contra NoSQL Injection
-| Campo | Valor |
-|-------|-------|
-| **Severidad** | 🟡 Media |
-| **CWE** | CWE-943 (Improper Neutralization of Special Elements in Data Query Logic) |
-| **Ubicación** | Controllers y Use Cases |
-| **Descripción** | Aunque Supabase previene SQL injection, no hay sanitización explícita de inputs. |
-| **Remediación** | Implementar librería de sanitización como `validator` o `sanitize-html`. |
-| **Esfuerzo** | 🟡 Medio (3-4 horas) |
-
----
-
-## 🟢 Vulnerabilidades Bajas
-
-### 13. Sin Request ID para Trazabilidad
-| Campo | Valor |
-|-------|-------|
-| **Severidad** | 🟢 Baja |
-| **CWE** | CWE-778 (Insufficient Logging) |
-| **Ubicación** | [src/index.ts#L16-L19](src/index.ts#L16-L19) |
-| **Descripción** | No se generan IDs únicos por request para trazabilidad. |
-| **Remediación** | Implementar middleware de request ID. |
-| **Esfuerzo** | 🟢 Bajo (1 hora) |
-
----
-
-### 14. Health Check Sin Autenticación
-| Campo | Valor |
-|-------|-------|
-| **Severidad** | 🟢 Baja |
-| **Ubicación** | [src/infrastructure/routes/health.routes.ts](src/infrastructure/routes/health.routes.ts) |
-| **Descripción** | Endpoint de health completamente público (práctica común pero considerar profundidad de información expuesta). |
-| **Remediación** | Asegurar que no exponga información sensible del sistema. |
-| **Esfuerzo** | 🟢 Bajo (30 minutos) |
-
----
-
-### 15. Sin Validación de Header Content-Type
-| Campo | Valor |
-|-------|-------|
-| **Severidad** | 🟢 Baja |
-| **CWE** | CWE-20 (Improper Input Validation) |
-| **Ubicación** | Endpoints POST |
-| **Descripción** | No se valida explícitamente que el Content-Type sea application/json. |
-| **Remediación** | Agregar middleware de validación de Content-Type. |
-| **Esfuerzo** | 🟢 Bajo (1 hora) |
-
----
-
-## ✅ Aspectos Positivos
-
-| Práctica | Estado | Detalles |
-|----------|--------|----------|
-| Hashing de contraseñas | ✅ | bcrypt con salt rounds configurables |
-| Validación de JWT_SECRET | ✅ | Mínimo 32 caracteres requeridos |
-| Protección contra timing attacks | ✅ | Uso de dummy hash en login |
-| Validación de formato de hash | ✅ | Regex para validar formato bcrypt |
-| Tokens de un solo uso | ✅ | Marcados como usados después del consumo |
-| Validación de tipo de token | ✅ | Previene uso cruzado de tokens |
-| Manejo de excepciones | ✅ | Excepciones tipadas y específicas |
-| Dependencias seguras | ✅ | npm audit: 0 vulnerabilidades |
-| Variables de entorno | ✅ | Validación al inicio del servidor |
-
----
-
-## 📋 Recomendaciones Priorizadas
-
-### 🚨 Inmediato (0-7 días)
-
-| # | Acción | Impacto | Esfuerzo |
-|---|--------|---------|----------|
-| 1 | Implementar rate limiting con `express-rate-limit` | Alto | Bajo |
-| 2 | Configurar CORS con whitelist de orígenes | Alto | Bajo |
-| 3 | Instalar y configurar `helmet` | Alto | Bajo |
-| 4 | Agregar validación de caracteres especiales en contraseñas | Medio | Bajo |
-
-### 📅 Corto Plazo (1-4 semanas)
-
-| # | Acción | Impacto | Esfuerzo |
-|---|--------|---------|----------|
-| 5 | Implementar bloqueo de cuenta por intentos fallidos | Alto | Medio |
-| 6 | Revisar y mejorar políticas RLS en Supabase | Alto | Medio |
-| 7 | Reemplazar console.log con logger estructurado | Medio | Medio |
-| 8 | Reducir expiración de tokens JWT | Medio | Bajo |
-
-### 📆 Mediano Plazo (1-3 meses)
-
-| # | Acción | Impacto | Esfuerzo |
-|---|--------|---------|----------|
-| 9 | Implementar sistema de refresh tokens | Alto | Alto |
-| 10 | Migrar tokens de URL a sistema más seguro | Alto | Medio |
-| 11 | Implementar auditoría de eventos de seguridad | Medio | Alto |
-| 12 | Agregar pruebas de penetración automatizadas | Medio | Alto |
-
----
-
-## 🛡️ Vectores de Ataque y Mitigaciones
-
-### Ataques Identificados
-
-| Vector | Riesgo Actual | Mitigación Requerida |
-|--------|---------------|----------------------|
-| **Fuerza Bruta** | 🔴 Alto | Rate limiting + Account lockout |
-| **Credential Stuffing** | 🔴 Alto | Rate limiting + CAPTCHA |
-| **CSRF** | 🔴 Alto | CORS restrictivo + CSRF tokens |
-| **Session Hijacking** | 🟠 Medio | Tokens cortos + HTTPS only |
-| **Token Theft** | 🟠 Medio | Refresh tokens + Revocación |
-| **SQL Injection** | 🟢 Bajo | Supabase ORM (protegido) |
-| **XSS** | 🟢 Bajo | API-only (sin render HTML) |
-| **Enumeration** | 🟢 Bajo | Mensajes genéricos en forgot-password |
-
-### Cómo Hacer el Microservicio Resiliente
-
-```typescript
-// Configuración de Resiliencia Recomendada
-
-// 1. Rate limiting avanzado
-import rateLimit from 'express-rate-limit';
-import RedisStore from 'rate-limit-redis';
-
-const limiter = rateLimit({
-  store: new RedisStore({ client: redisClient }),
-  windowMs: 15 * 60 * 1000,
-  max: 100,
-  standardHeaders: true,
-});
-
-// 2. Circuit breaker para servicios externos
-import CircuitBreaker from 'opossum';
-
-const emailBreaker = new CircuitBreaker(sendEmail, {
-  timeout: 5000,
-  errorThresholdPercentage: 50,
-  resetTimeout: 30000,
-});
-
-// 3. Health checks detallados
-app.get('/health/live', (req, res) => res.status(200).json({ status: 'alive' }));
-app.get('/health/ready', async (req, res) => {
-  const dbHealthy = await checkDatabase();
-  const emailHealthy = await checkEmailService();
-  res.status(dbHealthy && emailHealthy ? 200 : 503).json({ db: dbHealthy, email: emailHealthy });
-});
-
-// 4. Graceful shutdown
-process.on('SIGTERM', async () => {
-  await server.close();
-  await closeDbConnections();
-  process.exit(0);
-});
-
-// 5. Request timeout
-import timeout from 'connect-timeout';
-app.use(timeout('30s'));
-app.use((req, res, next) => {
-  if (!req.timedout) next();
-});
-```
-
----
-
-## 🔧 GitHub Privado + Render
-
-### ¿Funciona con repositorio privado?
-
-**Sí**, Render soporta repositorios privados de GitHub. Pasos:
-
-1. **Conectar GitHub a Render:**
-   - En Render Dashboard → Account Settings → Connected GitHub Account
-   - Autorizar acceso a repositorios privados
-
-2. **Configurar Deploy:**
-   ```yaml
-   # render.yaml (opcional pero recomendado)
-   services:
-     - type: web
-       name: loggin-mcp
-       runtime: node
-       buildCommand: npm install && npm run build
-       startCommand: npm start
-       envVars:
-         - key: NODE_ENV
-           value: production
-         - key: JWT_SECRET
-           sync: false  # Configurar manualmente en dashboard
-         - key: SUPABASE_URL
-           sync: false
-         - key: SUPABASE_KEY
-           sync: false
-   ```
-
-3. **Variables de Entorno Seguras:**
-   - Configurar todas las variables sensibles directamente en Render Dashboard
-   - NUNCA commitear archivos `.env` al repositorio
-
-4. **Permisos Mínimos:**
-   - En GitHub → Settings → Integrations → Render
-   - Dar acceso solo al repositorio específico, no a toda la organización
-
-### Consideraciones de Seguridad para Render
-
-| Aspecto | Recomendación |
-|---------|---------------|
-| Variables de entorno | Usar Render Environment Groups |
-| Secrets | Usar Render Secret Files para claves largas |
-| HTTPS | Habilitado por defecto en Render |
-| Dominio | Usar dominio personalizado con SSL |
-| Logs | Configurar retención apropiada |
-
----
-
-## 📁 Dependencias Recomendadas para Seguridad
-
-```json
-{
-  "dependencies": {
-    "helmet": "^7.1.0",
-    "express-rate-limit": "^7.1.5",
-    "express-validator": "^7.0.1",
-    "winston": "^3.11.0",
-    "hpp": "^0.2.3"
-  },
-  "devDependencies": {
-    "eslint-plugin-security": "^2.1.0"
-  }
-}
-```
-
----
-
-## 📞 Referencias
-
-- [OWASP Top 10 2021](https://owasp.org/Top10/)
-- [CWE - Common Weakness Enumeration](https://cwe.mitre.org/)
-- [Express Security Best Practices](https://expressjs.com/en/advanced/best-practice-security.html)
-- [Node.js Security Checklist](https://nodejs.org/en/docs/guides/security/)
-- [Render Private Repositories](https://render.com/docs/github)
-
----
-
-*Informe generado automáticamente. Última actualización: 10 de Marzo de 2026*
+*Informe generado siguiendo estándares Checkmarx One (SAST, SCA, IaC, Secrets Detection)*
