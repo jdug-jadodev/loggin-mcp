@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import healthRoutes from './infrastructure/routes/health.routes';
 import authRoutes from './infrastructure/routes/auth.routes';
 import notFoundRoutes from './infrastructure/routes/notFound.routes';
+import { startKeepAlive } from './utils/scripts/keepalive';
 
 dotenv.config();
 
@@ -11,7 +12,15 @@ const app: Application = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json({ limit: '10mb' }));
-app.use(cors());
+app.use(cors({
+  origin: [
+    'https://front-mcp-gules.vercel.app',
+    'http://localhost:5173',
+    process.env.FRONTEND_URL
+  ].filter((origin): origin is string => Boolean(origin)),
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
+}));
 
 app.use((req: Request, res: Response, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
@@ -44,6 +53,8 @@ const startServer = (): void => {
       console.log(`📍 Health check: http://localhost:${PORT}/health`);
       console.log(`🔧 Environment: ${process.env.NODE_ENV || 'development'}`);
       console.log(`⏰ Started at: ${new Date().toISOString()}\n`);
+
+      startKeepAlive();
     });
   } catch (error) {
     console.error('❌ Failed to start server:', error);
