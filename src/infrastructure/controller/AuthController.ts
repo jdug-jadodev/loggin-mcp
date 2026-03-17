@@ -5,6 +5,7 @@ import { LoginUseCasePort } from '../../domain/port/portin/LoginUseCasePort';
 import { RegisterEmailUseCase } from '../../application/usecase/RegisterEmailUseCase';
 import { ForgotPasswordUseCase } from '../../application/usecase/ForgotPasswordUseCase';
 import { ResetPasswordUseCase } from '../../application/usecase/ResetPasswordUseCase';
+import { ValidatePasswordTokenUseCase } from '../../application/usecase/ValidatePasswordTokenUseCase';
 import { RevokedTokenRepositoryPort } from '../../domain/port/portout/RevokedTokenRepositoryPort';
 import { EmailNotFoundError } from '../../application/exception/EmailNotFoundError';
 import { UserAlreadyHasPasswordError } from '../../application/exception/UserAlreadyHasPasswordError';
@@ -21,7 +22,8 @@ export class AuthController {
     private readonly registerEmailUseCase?: RegisterEmailUseCase,
     private readonly forgotPasswordUseCase?: ForgotPasswordUseCase,
     private readonly resetPasswordUseCase?: ResetPasswordUseCase,
-    private readonly revokedTokenRepository?: RevokedTokenRepositoryPort
+    private readonly revokedTokenRepository?: RevokedTokenRepositoryPort,
+    private readonly validatePasswordTokenUseCase?: ValidatePasswordTokenUseCase
   ) {}
 
   async checkEmail(req: Request, res: Response): Promise<void> {
@@ -303,6 +305,57 @@ export class AuthController {
     } catch (error) {
       console.error('logout error', error);
       res.status(500).json({ status: 'error', message: 'Internal server error', code: 'INTERNAL_ERROR' });
+    }
+  }
+
+  async validatePasswordToken(req: Request, res: Response): Promise<void> {
+    try {
+      if (!this.validatePasswordTokenUseCase) {
+        res.status(500).json({ status: 'error', message: 'ValidatePasswordTokenUseCase not configured', code: 'INTERNAL_ERROR' });
+        return;
+      }
+
+      // Extraer parámetros de query
+      const { token, type } = req.query;
+
+      // Validar que token sea un string no vacío
+      if (!token || typeof token !== 'string' || token.trim() === '') {
+        res.status(400).json({
+          status: 'error',
+          message: 'Missing or invalid required parameter: token',
+          code: 'MISSING_PARAMETER'
+        });
+        return;
+      }
+
+      // Validar que type sea uno de los valores permitidos
+      if (!type || typeof type !== 'string' || !['password_creation', 'password_reset'].includes(type)) {
+        res.status(400).json({
+          status: 'error',
+          message: `Invalid or missing parameter: type. Must be "password_creation" or "password_reset"`,
+          code: 'INVALID_PARAMETER'
+        });
+        return;
+      }
+
+      // Ejecutar validación
+      const result = await this.validatePasswordTokenUseCase.execute({
+        token: token.trim(),
+        type: type as 'password_creation' | 'password_reset'
+      });
+
+      // Retornar respuesta exitosa con el resultado
+      res.status(200).json({
+        status: 'success',
+        data: result
+      });
+    } catch (error) {
+      console.error('validatePasswordToken error', error);
+      res.status(500).json({
+        status: 'error',
+        message: 'Internal server error',
+        code: 'INTERNAL_ERROR'
+      });
     }
   }
 }

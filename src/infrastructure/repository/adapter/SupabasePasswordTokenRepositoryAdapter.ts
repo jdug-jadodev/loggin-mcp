@@ -24,7 +24,12 @@ export class SupabasePasswordTokenRepositoryAdapter implements PasswordTokenRepo
       .limit(1)
       .single();
 
+    // Manejo de error NOT FOUND (PGRST116)
     if (error) {
+      if (error.code === 'PGRST116') {
+        // No rows found
+        return { valid: false, message: 'Token not found' };
+      }
       return { valid: false, message: `DB error: ${error.message}` };
     }
 
@@ -33,9 +38,20 @@ export class SupabasePasswordTokenRepositoryAdapter implements PasswordTokenRepo
     const now = new Date();
     const expiresAt = new Date(data.expires_at);
 
-    if (data.used) return { valid: false, message: 'Token already used' };
-    if (expiresAt < now) return { valid: false, message: 'Token expired' };
-    if (data.type !== type) return { valid: false, message: 'Invalid token type' };
+    // Verificar si el token ya fue usado
+    if (data.used) {
+      return { valid: false, message: 'Token already used' };
+    }
+
+    // Verificar si el token ha expirado
+    if (expiresAt < now) {
+      return { valid: false, message: 'Token expired' };
+    }
+
+    // Verificar si el tipo de token coincide
+    if (data.type !== type) {
+      return { valid: false, message: 'Invalid token type' };
+    }
 
     return { valid: true, userId: data.user_id, email: data.email };
   }
