@@ -5,6 +5,7 @@ import { LoginUseCasePort } from '../../domain/port/portin/LoginUseCasePort';
 import { RegisterEmailUseCase } from '../../application/usecase/RegisterEmailUseCase';
 import { ForgotPasswordUseCase } from '../../application/usecase/ForgotPasswordUseCase';
 import { ResetPasswordUseCase } from '../../application/usecase/ResetPasswordUseCase';
+import { RevokedTokenRepositoryPort } from '../../domain/port/portout/RevokedTokenRepositoryPort';
 import { EmailNotFoundError } from '../../application/exception/EmailNotFoundError';
 import { UserAlreadyHasPasswordError } from '../../application/exception/UserAlreadyHasPasswordError';
 import { InvalidCredentialsError } from '../../application/exception/InvalidCredentialsError';
@@ -19,7 +20,8 @@ export class AuthController {
     private readonly loginUseCase: LoginUseCasePort,
     private readonly registerEmailUseCase?: RegisterEmailUseCase,
     private readonly forgotPasswordUseCase?: ForgotPasswordUseCase,
-    private readonly resetPasswordUseCase?: ResetPasswordUseCase
+    private readonly resetPasswordUseCase?: ResetPasswordUseCase,
+    private readonly revokedTokenRepository?: RevokedTokenRepositoryPort
   ) {}
 
   async checkEmail(req: Request, res: Response): Promise<void> {
@@ -159,6 +161,7 @@ export class AuthController {
           timestamp: new Date().toISOString()
         });
       } else if (error instanceof TokenGenerationError) {
+        console.error('Token generation error during login:', error);
         res.status(500).json({
           status: 'error',
           message: 'Token generation failed',
@@ -166,6 +169,7 @@ export class AuthController {
           timestamp: new Date().toISOString()
         });
       } else {
+        console.error('login error', error);
         res.status(500).json({
           status: 'error',
           message: 'Internal server error',
@@ -265,6 +269,39 @@ export class AuthController {
       }
 
       console.error('resetPassword error', error);
+      res.status(500).json({ status: 'error', message: 'Internal server error', code: 'INTERNAL_ERROR' });
+    }
+  }
+
+  async logout(req: Request, res: Response): Promise<void> {
+    try {
+      if (!this.revokedTokenRepository) {
+        res.status(500).json({ status: 'error', message: 'RevokedTokenRepository not configured', code: 'INTERNAL_ERROR' });
+        return;
+      }
+
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        res.status(400).json({ status: 'error', message: 'Missing or invalid Authorization header', code: 'MISSING_AUTH' });
+        return;
+      }
+
+      const token = authHeader.substring(7);
+      const { verifyToken } = require('../../utils/jwt');
+      const payload = verifyToken(token) as { jti?: string; exp?: number };
+
+      if (!payload || !payload.jti) {
+        res.status(400).json({ status: 'error', message: 'Token missing jti claim', code: 'INVALID_TOKEN' });
+        return;
+      }
+
+      const expiresAt = payload.exp ? new Date(payload.exp * 1000) : new Date(Date.now() + 60 * 1000);
+
+      await this.revokedTokenRepository.revokeToken(payload.jti, expiresAt);
+
+      res.status(200).json({ status: 'success', message: 'Logged out' });
+    } catch (error) {
+      console.error('logout error', error);
       res.status(500).json({ status: 'error', message: 'Internal server error', code: 'INTERNAL_ERROR' });
     }
   }

@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifyToken } from '../../utils/jwt';
+import { SupabaseRevokedTokenRepositoryAdapter } from '../repository/adapter/SupabaseRevokedTokenRepositoryAdapter';
 import { UnauthorizedError } from '../../application/exception/UnauthorizedError';
 import { TokenExpiredError } from '../../application/exception/TokenExpiredError';
 import { InvalidTokenError } from '../../application/exception/InvalidTokenError';
@@ -30,6 +31,26 @@ export const authMiddleware = async (
 
     req.userId = payload.userId;
     req.email = payload.email;
+
+    // Check if token has been revoked (jti)
+    const jti = (payload as any).jti;
+    if (jti) {
+      try {
+        const revokedRepo = new SupabaseRevokedTokenRepositoryAdapter();
+        const revoked = await revokedRepo.isRevoked(jti);
+        if (revoked) {
+          throw new UnauthorizedError('Token has been revoked');
+        }
+      } catch (err) {
+        // If DB error, log and treat as server error
+        if ((err as any).message && (err as any).message.includes('Error checking revoked token')) {
+          console.error('Revoked token check failed', err);
+          res.status(500).json({ status: 'error', message: 'Internal server error', code: 'INTERNAL_ERROR' });
+          return;
+        }
+        throw err;
+      }
+    }
 
     next();
   } catch (error) {

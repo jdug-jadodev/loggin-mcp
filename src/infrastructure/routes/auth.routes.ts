@@ -8,6 +8,7 @@ import { authMiddleware } from '../middleware/auth.middleware';
 import { adminMiddleware } from '../middleware/admin.middleware';
 import { ResendEmailAdapter } from '../email/adapter/ResendEmailAdapter';
 import { SupabasePasswordTokenRepositoryAdapter } from '../repository/adapter/SupabasePasswordTokenRepositoryAdapter';
+import { SupabaseRevokedTokenRepositoryAdapter } from '../repository/adapter/SupabaseRevokedTokenRepositoryAdapter';
 import { RegisterEmailUseCase } from '../../application/usecase/RegisterEmailUseCase';
 import { ForgotPasswordUseCase } from '../../application/usecase/ForgotPasswordUseCase';
 import { ResetPasswordUseCase } from '../../application/usecase/ResetPasswordUseCase';
@@ -17,6 +18,7 @@ const router = express.Router();
 const userRepository = new SupabaseUserRepositoryAdapter();
 const checkEmailUseCase = new CheckEmailExistsUseCase(userRepository);
 const passwordTokenRepository = new SupabasePasswordTokenRepositoryAdapter();
+const revokedTokenRepository = new SupabaseRevokedTokenRepositoryAdapter();
 const emailService = new ResendEmailAdapter();
 
 const createPasswordUseCase = new CreatePasswordUseCase(userRepository, passwordTokenRepository);
@@ -33,6 +35,7 @@ const authController = new AuthController(
   registerEmailUseCase,
   forgotPasswordUseCase,
   resetPasswordUseCase
+  , revokedTokenRepository
 );
 
 router.post('/check-email', (req, res) => authController.checkEmail(req, res));
@@ -41,5 +44,6 @@ router.post('/login', (req, res) => authController.login(req, res));
 router.post('/register-email', authMiddleware, adminMiddleware, (req, res) => authController.registerEmail(req, res));
 router.post('/forgot-password', (req, res) => authController.forgotPassword(req, res));
 router.post('/reset-password', (req, res) => authController.resetPassword(req, res));
+router.post('/logout', authMiddleware, (req, res) => authController.logout(req, res));
 
 export default router;

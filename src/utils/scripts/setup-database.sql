@@ -70,3 +70,19 @@ BEGIN
   DELETE FROM password_tokens WHERE expires_at < NOW() AND used = TRUE;
 END;
 $$ LANGUAGE plpgsql;
+
+-- Table for revoked JWTs (for logout / revocation)
+CREATE TABLE IF NOT EXISTS revoked_tokens (
+  jti TEXT PRIMARY KEY,
+  expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_revoked_tokens_expires_at ON revoked_tokens(expires_at);
+
+-- Cleanup function for revoked tokens
+CREATE OR REPLACE FUNCTION clean_revoked_tokens() RETURNS void AS $$
+BEGIN
+  DELETE FROM revoked_tokens WHERE expires_at < NOW();
+END;
+$$ LANGUAGE plpgsql;

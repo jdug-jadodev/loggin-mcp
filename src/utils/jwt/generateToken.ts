@@ -1,6 +1,8 @@
 import * as jwt from 'jsonwebtoken';
 import { JwtPayload } from './types/JwtPayload';
 import { getTokenExpiration } from './expiration';
+import crypto from 'crypto';
+import { TokenGenerationError } from '../../application/exception/TokenGenerationError';
 
 const MIN_SECRET_LENGTH = 32;
 
@@ -15,12 +17,14 @@ export function generateToken(userId: string, email: string): string {
 
   const jwtSecret = process.env.JWT_SECRET;
   if (!jwtSecret || jwtSecret.trim().length === 0) {
-    throw new Error('JWT_SECRET is not defined in environment variables');
+    throw new TokenGenerationError('JWT_SECRET is not defined in environment variables');
   }
 
   if (jwtSecret.length < MIN_SECRET_LENGTH) {
-    throw new Error(`JWT_SECRET must be at least ${MIN_SECRET_LENGTH} characters long`);
+    throw new TokenGenerationError(`JWT_SECRET must be at least ${MIN_SECRET_LENGTH} characters long`);
   }
+
+  const jti = (crypto as any).randomUUID ? (crypto as any).randomUUID() : crypto.randomBytes(16).toString('hex');
 
   const payload: JwtPayload = {
     userId,
@@ -31,11 +35,12 @@ export function generateToken(userId: string, email: string): string {
     const { expiresIn } = getTokenExpiration();
 
     const token = (jwt.sign as any)(payload, jwtSecret, {
-      expiresIn
+      expiresIn,
+      jwtid: jti
     });
 
     return token;
   } catch (error) {
-    throw new Error(`Failed to generate token: ${(error as Error).message}`);
+    throw new TokenGenerationError(`Failed to generate token: ${(error as Error).message}`);
   }
 }

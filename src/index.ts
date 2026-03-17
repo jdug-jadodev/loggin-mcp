@@ -16,6 +16,7 @@ app.use(cors({
   origin: [
     'https://front-mcp-gules.vercel.app',
     'http://localhost:5173',
+    'http://127.0.0.1:3000',
     process.env.FRONTEND_URL
   ].filter((origin): origin is string => Boolean(origin)),
   credentials: true,
