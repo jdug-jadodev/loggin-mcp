@@ -1,7 +1,7 @@
 import * as jwt from 'jsonwebtoken';
 import { JwtPayload } from './types/JwtPayload';
+import { getTokenExpiration } from './expiration';
 
-const TOKEN_EXPIRATION = '15h';
 const MIN_SECRET_LENGTH = 32;
 
 export function generateToken(userId: string, email: string): string {
@@ -28,8 +28,10 @@ export function generateToken(userId: string, email: string): string {
   };
 
   try {
-    const token = jwt.sign(payload, jwtSecret, {
-      expiresIn: TOKEN_EXPIRATION
+    const { expiresIn } = getTokenExpiration();
+
+    const token = (jwt.sign as any)(payload, jwtSecret, {
+      expiresIn
     });
 
     return token;
