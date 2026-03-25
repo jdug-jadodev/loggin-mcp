@@ -23,7 +23,7 @@ export function parseExpirationToMs(exp: string): number {
 }
 
 export function getTokenExpiration(): { expiresIn: string; expiresMs: number } {
-  const expiresIn = process.env.JWT_EXPIRES_IN || '1h';
+  const expiresIn = process.env.JWT_EXPIRES_IN || '5h';
   const expiresMs = parseExpirationToMs(expiresIn);
   return { expiresIn, expiresMs };
 }
